@@ -456,11 +456,11 @@ type Setup = {
   adminName: string; adminEmail: string; academicYear: string; semester: string;
 };
 const DEFAULT_SETUP: Setup = {
-  name: "Kwame Nkrumah University of Science & Technology",
-  shortCode: "KNUST", tagline: "Smart Attendance · Admin", logo: null,
-  primary: "#F59E0B", country: "Ghana", timezone: "Africa/Accra",
-  adminName: "System Admin", adminEmail: "admin@knust.edu.gh",
-  academicYear: "2024/2025", semester: "Semester 1",
+  name: "",
+  shortCode: "", tagline: "", logo: null,
+  primary: "#F59E0B", country: "", timezone: "Africa/Accra",
+  adminName: "", adminEmail: "",
+  academicYear: "", semester: "Semester 1",
 };
 
 export default function AdminApp() {
@@ -483,7 +483,21 @@ export default function AdminApp() {
   const [sbOpen, setSbOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-
+  useEffect(() => {
+    document.title = setup ? `${setup.shortCode} Admin Portal` : "Smart Attendance System";
+    
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+    if (setup?.logo) {
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "icon";
+        document.head.appendChild(link);
+      }
+      link.href = setup.logo;
+    } else if (link) {
+      link.remove();
+    }
+  }, [setup]);
 
   // mutable lists
   const [departments, setDepartments] = useState(departmentsSeed);
@@ -1211,7 +1225,11 @@ function CoursesView({ courses, setCourses, programmes, lecturers, ctx, openSlid
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <IconBtn icon={Pencil} title="Edit" onClick={() => openSlide({ type: "course", data: c })} />
-                      <IconBtn icon={UserCheck} title="View Students" onClick={() => onNav("students", { courseId: c.id })} />
+                      <IconBtn
+                        icon={UserCheck}
+                        title="View Students"
+                        onClick={() => onNav("students", { courseId: c.id })}
+                      />
                       <IconBtn icon={Clock} title="Attendance History" onClick={() => toast("info", "Opening attendance history…")} />
                       <IconBtn icon={Copy} title="Clone" onClick={() => openSlide({ type: "clone-course", data: c })} />
                       <IconBtn icon={Power} title="Toggle" onClick={() => { setCourses(courses.map((x: any) => x.id === c.id ? { ...x, active: !x.active } : x)); toast("info", "Status updated"); }} />
@@ -2912,23 +2930,23 @@ function SetupWizard({ initial, onComplete }: { initial: Setup; onComplete: (s: 
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Full institution name *</label>
-                <input value={s.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g. Kwame Nkrumah University of Science & Technology" style={inputStyle} />
+                <input value={s.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g. University of Technology" style={inputStyle} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Short code *</label>
-                  <input value={s.shortCode} onChange={(e) => update("shortCode", e.target.value.toUpperCase())} placeholder="KNUST" maxLength={10} style={inputStyle} />
+                  <input value={s.shortCode} onChange={(e) => update("shortCode", e.target.value.toUpperCase())} placeholder="e.g. UOT" maxLength={10} style={inputStyle} />
                   <div className="text-[10px] mt-1" style={{ color: C.textMuted }}>Shown in the sidebar and on login.</div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Tagline</label>
-                  <input value={s.tagline} onChange={(e) => update("tagline", e.target.value)} placeholder="Smart Attendance · Admin" style={inputStyle} />
+                  <input value={s.tagline} onChange={(e) => update("tagline", e.target.value)} placeholder="e.g. Smart Attendance · Admin" style={inputStyle} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Country</label>
-                  <input value={s.country} onChange={(e) => update("country", e.target.value)} style={inputStyle} />
+                  <input value={s.country} onChange={(e) => update("country", e.target.value)} placeholder="e.g. Ghana" style={inputStyle} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Timezone</label>
@@ -2995,15 +3013,15 @@ function SetupWizard({ initial, onComplete }: { initial: Setup; onComplete: (s: 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Full name *</label>
-                  <input value={s.adminName} onChange={(e) => update("adminName", e.target.value)} placeholder="System Admin" style={inputStyle} />
+                  <input value={s.adminName} onChange={(e) => update("adminName", e.target.value)} placeholder="e.g. System Admin" style={inputStyle} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Email address *</label>
-                  <input type="email" value={s.adminEmail} onChange={(e) => update("adminEmail", e.target.value)} placeholder="admin@knust.edu.gh" style={inputStyle} />
+                  <input type="email" value={s.adminEmail} onChange={(e) => update("adminEmail", e.target.value)} placeholder="e.g. admin@university.edu" style={inputStyle} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Active academic year</label>
-                  <input value={s.academicYear} onChange={(e) => update("academicYear", e.target.value)} placeholder="2024/2025" style={inputStyle} />
+                  <input value={s.academicYear} onChange={(e) => update("academicYear", e.target.value)} placeholder="e.g. 2024/2025" style={inputStyle} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.textSec }}>Current semester</label>
