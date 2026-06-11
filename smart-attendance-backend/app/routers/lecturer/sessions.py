@@ -689,14 +689,16 @@ async def update_session(
     return await get_session(session_id, current_user, db)
 
 
-@router.post("/{session_id}/override", summary="Manual Attendance Override")
+@router.patch("/{session_id}/attendance/{student_id}", summary="Manual Attendance Override")
 async def override_attendance(
     session_id: str,
+    student_id: str,
     data: ManualSessionOverride,
     current_user: User = Depends(require_lecturer),
     db: AsyncSession = Depends(get_db)
 ):
-    """Manual attendance override by lecturer for a student."""
+    """Manual attendance override by lecturer for a single student."""
+    # Ensure URL student_id matches body student_id if provided, or just use URL one
     lecturer_id = await get_lecturer_id(current_user.id, db)
 
     res = await db.execute(select(Session, Course).join(Course, Session.course_id == Course.id).filter(Session.id == session_id))
@@ -710,11 +712,11 @@ async def override_attendance(
     if not s.is_locked:
         raise HTTPException(status_code=400, detail="Session must be ended before overriding attendance.")
 
-    sc = await db.scalar(select(StudentCourse).filter(StudentCourse.student_id == data.student_id, StudentCourse.course_id == c.id, StudentCourse.is_active == True))
+    sc = await db.scalar(select(StudentCourse).filter(StudentCourse.student_id == student_id, StudentCourse.course_id == c.id, StudentCourse.is_active == True))
     if not sc:
         raise HTTPException(status_code=400, detail="Student is not enrolled in this course")
 
-    ar = await db.scalar(select(AttendanceRecord).filter(AttendanceRecord.session_id == s.id, AttendanceRecord.student_id == data.student_id))
+    ar = await db.scalar(select(AttendanceRecord).filter(AttendanceRecord.session_id == s.id, AttendanceRecord.student_id == student_id))
     now = datetime.utcnow()
     
     if ar:
@@ -726,7 +728,7 @@ async def override_attendance(
     else:
         ar = AttendanceRecord(
             session_id=s.id,
-            student_id=data.student_id,
+            student_id=student_id,
             status=data.status,
             is_manual_override=True,
             override_reason=data.reason,
@@ -740,9 +742,9 @@ async def override_attendance(
     await db.commit()
     await db.refresh(ar)
 
-    await NotificationService.check_and_send_threshold_alerts(data.student_id, c.id, db)
+    await NotificationService.check_and_send_threshold_alerts(student_id, c.id, db)
 
-    st = await db.scalar(select(Student).filter(Student.id == data.student_id))
+    st = await db.scalar(select(Student).filter(Student.id == student_id))
     
     await NotificationService.log_audit_action(
         current_user.id, "manual_attendance_override", "attendance_record", ar.id,
@@ -778,3 +780,62 @@ async def override_attendance(
     )
 
     return {"message": "Attendance updated", "record": resp}
+
+@router.post("/{session_id}/export", summary="Export Session Attendance")
+async def export_session_attendance(
+    session_id: str,
+    format: str = Query("csv", description="Export format: 'csv' or 'excel'"),
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    import io
+    import csv
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+
+    lecturer_id = await get_lecturer_id(current_user.id, db)
+    res = await db.execute(select(Session, Course).join(Course, Session.course_id == Course.id).filter(Session.id == session_id))
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s, c = row
+
+    if s.lecturer_id != lecturer_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Fetch attendance
+    att_res = await db.execute(
+        select(AttendanceRecord, Student)
+        .join(Student, AttendanceRecord.student_id == Student.id)
+        .filter(AttendanceRecord.session_id == s.id)
+        .order_by(Student.name.asc())
+    )
+    records = att_res.all()
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Student ID", "Student Name", "Status", "Method", "Checked In At", "Manual Override", "Override Reason"])
+        
+        for r, st in records:
+            checked_in = r.checked_in_at.strftime("%Y-%m-%d %H:%M:%S") if r.checked_in_at else "N/A"
+            writer.writerow([
+                st.student_id,
+                st.name,
+                r.status.value.upper(),
+                r.method.value if r.method else "N/A",
+                checked_in,
+                "Yes" if r.is_manual_override else "No",
+                r.override_reason or ""
+            ])
+            
+        output.seek(0)
+        filename = f"attendance_{c.code}_{s.session_date}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(filename)}"}
+        )
+    else:
+        # Placeholder for excel
+        raise HTTPException(status_code=400, detail="Excel export not yet implemented. Use format=csv.")

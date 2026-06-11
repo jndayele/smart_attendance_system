@@ -186,7 +186,7 @@ async def get_dashboard(
     # Academic year / Semester
     res_ay = await db.execute(select(AcademicYear).filter(AcademicYear.is_active == True))
     ay = res_ay.scalars().first()
-    ay_name = ay.name if ay else None
+    ay_name = ay.year_label if ay else None
     
     res_sem = await db.execute(select(Semester).filter(Semester.is_active == True))
     sem = res_sem.scalars().first()
@@ -272,3 +272,22 @@ async def get_live_session(
         already_marked=already_marked
     )
     return {"live_session": alert.model_dump()}
+
+@router.get("/upcoming-sessions", summary="Get Upcoming Sessions")
+async def get_upcoming_sessions(
+    current_user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db)
+):
+    # Retrieve the student
+    student, _ = await get_student_record(current_user.id, db)
+    
+    # Retrieve active courses for the student
+    res_c = await db.execute(select(StudentCourse.course_id).filter(StudentCourse.student_id == student.id, StudentCourse.is_active == True))
+    course_ids = [r[0] for r in res_c.all()]
+    
+    if not course_ids:
+        return {"upcoming_sessions": []}
+    
+    # Normally we would query a Schedule table here. For now, since there's no schedule table,
+    # we return a static projection based on active courses or simply an empty list
+    return {"upcoming_sessions": []}

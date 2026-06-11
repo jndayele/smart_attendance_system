@@ -219,3 +219,14 @@ async def get_course_details(
         "sessions": sessions_resp,
         "warning_message": msg
     }
+
+@router.get("/{course_id}/attendance-history", summary="Get Course Attendance History")
+async def get_course_attendance_history(
+    course_id: str,
+    current_user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db)
+):
+    """Specific endpoint for attendance history, reusing course details."""
+    details = await get_course_details(course_id, current_user, db)
+    return {"attendance_history": details["sessions"], "summary": details["attendance_summary"]}
+

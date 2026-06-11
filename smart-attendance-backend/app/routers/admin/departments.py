@@ -125,10 +125,15 @@ async def update_department(
         entity_id=dept.id, details=update_data.model_dump(exclude_unset=True), ip_address=None, db=db
     )
     
-    # Return response... mocking counts for brevity
+    # Return response with real counts
+    prog_cnt = await db.scalar(select(func.count(Programme.id)).where(Programme.department_id == department_id))
+    stu_cnt = await db.scalar(
+        select(func.count(Student.id)).join(Programme).where(Programme.department_id == department_id)
+    )
+    
     dept_dict = dept.__dict__.copy()
-    dept_dict["programme_count"] = 0
-    dept_dict["student_count"] = 0
+    dept_dict["programme_count"] = prog_cnt or 0
+    dept_dict["student_count"] = stu_cnt or 0
     return DepartmentResponse(**dept_dict)
 
 @router.delete("/{department_id}")
@@ -187,10 +192,30 @@ async def activate_department(department_id: str, db: AsyncSession = Depends(get
 
 @router.get("/{department_id}/programmes")
 async def get_department_programmes(department_id: str, db: AsyncSession = Depends(get_db)):
-    # Mocking return
-    return {"programmes": [], "total": 0}
+    result = await db.execute(
+        select(Programme)
+        .where(Programme.department_id == department_id)
+        .order_by(Programme.name)
+    )
+    programmes = result.scalars().all()
+    return {"programmes": [p.__dict__ for p in programmes], "total": len(programmes)}
 
 @router.get("/{department_id}/students")
-async def get_department_students(department_id: str, db: AsyncSession = Depends(get_db)):
-    # Mocking return
-    return {"students": [], "total": 0}
+async def get_department_students(
+    department_id: str, 
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Student)
+        .join(Programme, Student.programme_id == Programme.id)
+        .where(Programme.department_id == department_id)
+        .offset(skip).limit(limit)
+    )
+    students = result.scalars().all()
+    total = await db.scalar(
+        select(func.count(Student.id))
+        .join(Programme).where(Programme.department_id == department_id)
+    )
+    return {"students": students, "total": total or 0}

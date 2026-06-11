@@ -363,3 +363,79 @@ async def get_dashboard_stats(
         sessions_this_week=sessions_this_week,
         at_risk_count=total_at_risk_count
     )
+
+@router.get("/today-sessions", summary="Get Today's Sessions")
+async def get_today_sessions(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    from datetime import date
+    res = await db.execute(select(Lecturer).filter(Lecturer.user_id == current_user.id))
+    lecturer = res.scalars().first()
+    if not lecturer:
+        raise HTTPException(status_code=404, detail="Lecturer not found")
+
+    res = await db.execute(
+        select(Session, Course.title, Course.code)
+        .join(Course, Session.course_id == Course.id)
+        .filter(Session.lecturer_id == lecturer.id, Session.session_date == date.today())
+        .order_by(Session.started_at.desc())
+    )
+    records = res.all()
+    
+    sessions = []
+    for s, c_title, c_code in records:
+        dur = int((s.ended_at - s.started_at).total_seconds() / 60) if s.ended_at else None
+        res_counts = await db.execute(
+            select(
+                func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "present"),
+                func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "absent")
+            ).filter(AttendanceRecord.session_id == s.id)
+        )
+        pres, absnt = res_counts.first()
+        
+        sessions.append({
+            "session_id": s.id,
+            "course_title": c_title,
+            "course_code": c_code,
+            "label": s.label,
+            "started_at": s.started_at,
+            "ended_at": s.ended_at,
+            "duration_minutes": dur,
+            "is_active": s.is_active,
+            "present_count": pres,
+            "absent_count": absnt
+        })
+    return {"today_sessions": sessions}
+
+@router.get("/recent-activity", summary="Get Recent Activity")
+async def get_recent_activity(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    # For a lecturer, recent activity could be recent sessions, or recent attendance records
+    res = await db.execute(select(Lecturer).filter(Lecturer.user_id == current_user.id))
+    lecturer = res.scalars().first()
+    if not lecturer:
+        raise HTTPException(status_code=404, detail="Lecturer not found")
+
+    res_recent = await db.execute(
+        select(Session, Course.title, Course.code)
+        .join(Course, Session.course_id == Course.id)
+        .filter(Session.lecturer_id == lecturer.id)
+        .order_by(Session.started_at.desc())
+        .limit(10)
+    )
+    records = res_recent.all()
+    
+    activity = []
+    for s, c_title, c_code in records:
+        activity.append({
+            "activity_type": "session_completed" if s.ended_at else "session_started",
+            "course_title": c_title,
+            "course_code": c_code,
+            "session_id": s.id,
+            "timestamp": s.ended_at or s.started_at,
+            "details": f"Session for {c_code} - {c_title}"
+        })
+    return {"recent_activity": activity}

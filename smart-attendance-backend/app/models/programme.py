@@ -14,6 +14,7 @@ class Programme(Base):
     code = Column(String(10), nullable=False, unique=True)
     duration_years = Column(Integer, nullable=False)  # e.g., 1-6
     is_active = Column(Boolean, default=True)
+    archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

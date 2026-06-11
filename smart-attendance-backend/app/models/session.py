@@ -20,6 +20,7 @@ class Session(Base):
     session_code = Column(String(10), nullable=False)
     is_active = Column(Boolean, default=True)
     is_locked = Column(Boolean, default=False)
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

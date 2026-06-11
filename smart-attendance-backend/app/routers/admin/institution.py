@@ -1,14 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from typing import Dict, Any
+import base64
+from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.dependencies import require_admin
 from app.models.institution import Institution
 from app.models.user import User
 from app.models.notification import AuditLog
+from app.models.session import Session
+from app.models.attendance import AttendanceRecord
+from app.models.course import Course
 from app.schemas.institution import (
     InstitutionUpdate, SystemSettingsUpdate, NotificationSettingsUpdate, 
     SMTPSettingsUpdate, AdminPasswordChange, InstitutionResponse, AuditLogResponse
@@ -16,6 +21,7 @@ from app.schemas.institution import (
 from app.schemas.reports import DashboardStatsResponse
 from app.services.notification_service import NotificationService
 from app.services.email_service import send_test_email
+from app.services.cloudinary_service import upload_image
 from app.utils.security import hash_password, verify_password
 from app.config import get_settings
 
@@ -33,6 +39,7 @@ async def get_institution(db: AsyncSession = Depends(get_db)):
 @router.patch("/", response_model=InstitutionResponse)
 async def update_institution(
     update_data: InstitutionUpdate,
+    request: Request,
     logo: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
@@ -45,48 +52,72 @@ async def update_institution(
     if update_data.name: inst.name = update_data.name
     if update_data.admin_email: inst.admin_email = update_data.admin_email
     
-    # If logo provided, upload logic goes here (Cloudinary)
-    # Mocking for now:
     if logo:
-        inst.logo_url = "https://res.cloudinary.com/demo/image/upload/sample.jpg"
+        file_bytes = await logo.read()
+        logo_url = await upload_image(file_bytes, folder="institution_logos", public_id=f"institution_{inst.id}")
+        inst.logo_url = logo_url
 
     await db.commit()
     await db.refresh(inst)
 
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="institution_updated", entity_type="institution", 
-        entity_id=inst.id, details=update_data.model_dump(exclude_unset=True), ip_address=None, db=db
+        entity_id=inst.id, details=update_data.model_dump(exclude_unset=True), 
+        ip_address=request.client.host if request.client else None, db=db
     )
     return inst
 
 @router.get("/settings")
-async def get_system_settings():
+async def get_system_settings(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found")
+    
+    saved = inst.settings_data or {}
     return {
-        "qr_default_expiry_minutes": settings.QR_DEFAULT_EXPIRY_MINUTES,
-        "session_code_length": settings.SESSION_CODE_LENGTH,
-        "face_confidence_threshold": settings.FACE_CONFIDENCE_THRESHOLD,
-        "liveness_detection_enabled": settings.LIVENESS_DETECTION_ENABLED,
-        "max_login_attempts": settings.MAX_LOGIN_ATTEMPTS,
-        "lockout_duration_minutes": settings.LOCKOUT_DURATION_MINUTES,
-        "attendance_default_threshold": settings.ATTENDANCE_DEFAULT_THRESHOLD
+        "qr_default_expiry_minutes": saved.get("qr_default_expiry_minutes", settings.QR_DEFAULT_EXPIRY_MINUTES),
+        "session_code_length": saved.get("session_code_length", settings.SESSION_CODE_LENGTH),
+        "face_confidence_threshold": saved.get("face_confidence_threshold", settings.FACE_CONFIDENCE_THRESHOLD),
+        "liveness_detection_enabled": saved.get("liveness_detection_enabled", settings.LIVENESS_DETECTION_ENABLED),
+        "max_login_attempts": saved.get("max_login_attempts", settings.MAX_LOGIN_ATTEMPTS),
+        "lockout_duration_minutes": saved.get("lockout_duration_minutes", settings.LOCKOUT_DURATION_MINUTES),
+        "attendance_default_threshold": saved.get("attendance_default_threshold", settings.ATTENDANCE_DEFAULT_THRESHOLD)
     }
 
 @router.patch("/settings")
 async def update_system_settings(
     settings_update: SystemSettingsUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
-    # In a real scenario, this would persist to DB or write to .env
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found")
+        
+    current = inst.settings_data or {}
+    current.update(settings_update.model_dump(exclude_unset=True))
+    inst.settings_data = current
+    await db.commit()
+    
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="settings_updated", entity_type="settings", 
-        entity_id=None, details=settings_update.model_dump(exclude_unset=True), ip_address=None, db=db
+        entity_id=None, details=settings_update.model_dump(exclude_unset=True), 
+        ip_address=request.client.host if request.client else None, db=db
     )
-    return {"message": "Settings updated", "settings": settings_update.model_dump(exclude_unset=True)}
+    return {"message": "Settings updated", "settings": current}
 
 @router.get("/settings/notifications")
-async def get_notification_settings():
-    return {
+async def get_notification_settings(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found")
+        
+    saved = inst.notification_settings or {}
+    defaults = {
         "alert_below_80": True,
         "alert_below_75": True,
         "alert_below_70": True,
@@ -95,28 +126,58 @@ async def get_notification_settings():
         "weekly_summary_enabled": True,
         "session_not_ended_hours": 4
     }
+    return {**defaults, **saved}
 
 @router.patch("/settings/notifications")
 async def update_notification_settings(
     settings_update: NotificationSettingsUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found")
+        
+    current = inst.notification_settings or {}
+    current.update(settings_update.model_dump(exclude_unset=True))
+    inst.notification_settings = current
+    await db.commit()
+    
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="notification_settings_updated", entity_type="settings", 
-        entity_id=None, details=settings_update.model_dump(exclude_unset=True), ip_address=None, db=db
+        entity_id=None, details=settings_update.model_dump(exclude_unset=True), 
+        ip_address=request.client.host if request.client else None, db=db
     )
     return {"message": "Notification settings updated"}
 
 @router.patch("/settings/smtp")
 async def update_smtp_settings(
     smtp_update: SMTPSettingsUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Institution not found")
+        
+    current = inst.smtp_settings or {}
+    update_dict = smtp_update.model_dump(exclude_unset=True)
+    if "mail_password" in update_dict and update_dict["mail_password"]:
+        # Obfuscating the password
+        update_dict["mail_password"] = base64.b64encode(update_dict["mail_password"].encode('utf-8')).decode('utf-8')
+        
+    current.update(update_dict)
+    inst.smtp_settings = current
+    await db.commit()
+    
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="smtp_settings_updated", entity_type="settings", 
-        entity_id=None, details=smtp_update.model_dump(exclude_unset=True, exclude={"mail_password"}), ip_address=None, db=db
+        entity_id=None, details=smtp_update.model_dump(exclude_unset=True, exclude={"mail_password"}), 
+        ip_address=request.client.host if request.client else None, db=db
     )
     return {"message": "SMTP settings updated"}
 
@@ -131,6 +192,7 @@ async def test_smtp_settings(admin: User = Depends(require_admin)):
 @router.patch("/admin/password")
 async def update_admin_password(
     pwd_data: AdminPasswordChange,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
@@ -142,7 +204,8 @@ async def update_admin_password(
     
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="admin_password_changed", entity_type="user", 
-        entity_id=admin.id, details=None, ip_address=None, db=db
+        entity_id=admin.id, details=None, 
+        ip_address=request.client.host if request.client else None, db=db
     )
     return {"message": "Password updated successfully"}
 
@@ -151,29 +214,32 @@ async def get_audit_trail(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     action_type: str = None,
+    date_from: datetime = None,
+    date_to: datetime = None,
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(AuditLog).order_by(desc(AuditLog.created_at))
+    skip = (page - 1) * limit
+    query = select(AuditLog).order_by(AuditLog.created_at.desc())
     if action_type:
-        query = query.filter(AuditLog.action == action_type)
+        query = query.where(AuditLog.action == action_type)
+    if date_from:
+        query = query.where(AuditLog.created_at >= date_from)
+    if date_to:
+        query = query.where(AuditLog.created_at <= date_to)
         
-    res = await db.execute(query.offset((page - 1) * limit).limit(limit))
-    logs = res.scalars().all()
-    
-    total_res = await db.execute(select(func.count(AuditLog.id)))
-    total = total_res.scalar() or 0
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    results = await db.execute(query.offset(skip).limit(limit))
+    logs = results.scalars().all()
     
     return {"logs": logs, "total": total, "page": page}
 
 @router.get("/dashboard/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    # Mocking counts for brevity, normally these would be COUNT() queries
     from app.models.student import Student
     from app.models.lecturer import Lecturer
     from app.models.course import Course
     from app.models.department import Department
     from app.models.session import Session
-    from sqlalchemy import func
     from datetime import date
     
     s_cnt = await db.execute(select(func.count(Student.id)))
@@ -201,18 +267,74 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     )
 
 @router.get("/dashboard/charts")
-async def get_dashboard_charts():
+async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
+    weeks = []
+    for i in range(7, -1, -1):
+        week_start = datetime.utcnow() - timedelta(weeks=i+1)
+        week_end = datetime.utcnow() - timedelta(weeks=i)
+        
+        total = await db.scalar(
+            select(func.count(AttendanceRecord.id))
+            .join(Session).where(Session.session_date.between(week_start, week_end))
+        )
+        present = await db.scalar(
+            select(func.count(AttendanceRecord.id))
+            .join(Session).where(
+                Session.session_date.between(week_start, week_end),
+                AttendanceRecord.status == "present"
+            )
+        )
+        pct = round((present / total * 100) if total else 0, 1)
+        weeks.append({"week": f"Week {8-i}", "attendance_pct": pct})
+        
+    from app.models.department import Department
+    from app.models.programme import Programme
+    
+    dept_res = await db.execute(
+        select(Department.name, func.count(AttendanceRecord.id), func.sum(func.case((AttendanceRecord.status == "present", 1), else_=0)))
+        .select_from(Department)
+        .join(Programme, Programme.department_id == Department.id)
+        .join(Course, Course.programme_id == Programme.id)
+        .join(Session, Session.course_id == Course.id)
+        .join(AttendanceRecord, AttendanceRecord.session_id == Session.id)
+        .group_by(Department.name)
+    )
+    
+    dept_data = []
+    for dept_name, tot, pres in dept_res.all():
+        pct = round((pres / tot * 100) if tot else 0, 1)
+        dept_data.append({"department": dept_name, "avg_pct": pct})
+        
+    today = datetime.utcnow().date()
+    today_pres = await db.scalar(select(func.count(AttendanceRecord.id)).join(Session).where(Session.session_date == today, AttendanceRecord.status == "present"))
+    today_abs = await db.scalar(select(func.count(AttendanceRecord.id)).join(Session).where(Session.session_date == today, AttendanceRecord.status == "absent"))
+    
+    lowest_res = await db.execute(
+        select(Course.title, Course.code, Programme.name, func.count(AttendanceRecord.id), func.sum(func.case((AttendanceRecord.status == "present", 1), else_=0)))
+        .select_from(Course)
+        .join(Programme, Course.programme_id == Programme.id)
+        .join(Session, Session.course_id == Course.id)
+        .join(AttendanceRecord, AttendanceRecord.session_id == Session.id)
+        .group_by(Course.id, Programme.id)
+    )
+    
+    lowest_data = []
+    for c_title, c_code, p_name, c_tot, c_pres in lowest_res.all():
+        if c_tot and c_tot > 0:
+            c_pct = round((c_pres / c_tot * 100), 1)
+            lowest_data.append({
+                "course_title": c_title,
+                "course_code": c_code,
+                "programme": p_name,
+                "avg_pct": c_pct
+            })
+            
+    lowest_data.sort(key=lambda x: x["avg_pct"])
+    lowest_data = lowest_data[:10]
+
     return {
-        "weekly_attendance_trend": [
-            {"week": "Week 1", "date": "2024-01-01", "avg_pct": 85.5, "sessions_count": 20},
-            {"week": "Week 2", "date": "2024-01-08", "avg_pct": 82.1, "sessions_count": 25}
-        ],
-        "attendance_by_department": [
-            {"department": "Computer Science", "avg_pct": 88.0},
-            {"department": "Mathematics", "avg_pct": 79.5}
-        ],
-        "present_absent_today": {"present": 150, "absent": 20},
-        "lowest_attendance_courses": [
-            {"course_title": "Advanced Calculus", "course_code": "MATH301", "programme": "BSc Math", "avg_pct": 65.0}
-        ]
+        "weekly_attendance_trend": weeks,
+        "attendance_by_department": dept_data,
+        "present_absent_today": {"present": today_pres or 0, "absent": today_abs or 0},
+        "lowest_attendance_courses": lowest_data
     }

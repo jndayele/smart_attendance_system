@@ -166,18 +166,36 @@ async def deactivate_programme(programme_id: str, db: AsyncSession = Depends(get
 
 @router.patch("/{programme_id}/archive", response_model=ProgrammeResponse)
 async def archive_programme(programme_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+    from datetime import datetime
     res = await db.execute(select(Programme).filter(Programme.id == programme_id))
     prog = res.scalars().first()
     if not prog: raise HTTPException(status_code=404)
     prog.is_active = False
+    prog.archived_at = datetime.utcnow()
     await db.commit()
     await NotificationService.log_audit_action(admin.id, "programme_archived", "programme", prog.id, None, None, db)
     return await get_programme(programme_id, db)
 
 @router.get("/{programme_id}/students")
-async def get_programme_students(programme_id: str, db: AsyncSession = Depends(get_db)):
-    return {"students": [], "total": 0}
+async def get_programme_students(
+    programme_id: str, 
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Student).where(Student.programme_id == programme_id)
+        .offset(skip).limit(limit)
+    )
+    total = await db.scalar(
+        select(func.count(Student.id)).where(Student.programme_id == programme_id)
+    )
+    return {"students": result.scalars().all(), "total": total or 0}
 
 @router.get("/{programme_id}/courses")
 async def get_programme_courses(programme_id: str, db: AsyncSession = Depends(get_db)):
-    return {"courses": [], "total": 0}
+    result = await db.execute(
+        select(Course).where(Course.programme_id == programme_id)
+    )
+    courses = result.scalars().all()
+    return {"courses": courses, "total": len(courses)}

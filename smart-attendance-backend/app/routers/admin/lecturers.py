@@ -14,7 +14,8 @@ from app.models.session import Session
 from app.schemas.lecturer import LecturerCreate, LecturerUpdate, LecturerResponse, LecturerListResponse
 from app.services.notification_service import NotificationService
 from app.services.email_service import send_lecturer_activation_email
-from app.utils.security import hash_password
+from app.utils.security import hash_password, create_activation_token
+from datetime import datetime, timedelta
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -101,8 +102,13 @@ async def create_lecturer(
     await db.commit()
     await db.refresh(new_lec)
     
-    # Generate activation link (mocked)
-    activation_link = f"https://frontend.com/activate?token={uuid.uuid4()}"
+    # Generate activation link
+    token = create_activation_token(new_user.email)
+    new_lec.activation_token = token
+    new_lec.activation_token_expiry = datetime.utcnow() + timedelta(hours=72)
+    await db.commit()
+
+    activation_link = f"https://frontend.com/activate?token={token}"
     background_tasks.add_task(send_lecturer_activation_email, new_user.email, new_lec.name, activation_link)
     
     await NotificationService.log_audit_action(admin.id, "lecturer_created", "lecturer", new_lec.id, None, None, db)

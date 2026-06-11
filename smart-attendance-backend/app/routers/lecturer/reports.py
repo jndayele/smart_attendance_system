@@ -4,7 +4,7 @@ Lecturer Reports Router.
 Endpoints for the lecturer to generate attendance reports in JSON, PDF, and Excel formats.
 All operations must be scoped strictly to the authenticated lecturer's courses.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
@@ -93,10 +93,14 @@ async def get_overview(
                 if p_pct < c.threshold_pct:
                     below_thresh += 1
 
+        prog = await db.scalar(select(Programme).filter(Programme.id == c.programme_id))
+        prog_name = prog.name if prog else "Unknown"
+        prog_code = prog.code if prog else "Unknown"
+
         c_dict = c.__dict__.copy()
         c_dict.update({
-            "programme_name": "Unknown",
-            "programme_code": "Unknown",
+            "programme_name": prog_name,
+            "programme_code": prog_code,
             "lecturer_name": current_user.email,
             "enrolled_student_count": tot_enrolled,
             "session_count": len(sessions)
@@ -355,18 +359,24 @@ async def get_student_course_report(
     from app.routers.lecturer.courses import get_student_course_attendance
     att_list = await get_student_course_attendance(course_id, student_id, current_user, db)
 
+    from app.models.department import Department
+    from app.models.programme import Programme
+    st_prog = await db.scalar(select(Programme).filter(Programme.id == st.programme_id)) if st.programme_id else None
+    st_dept = await db.scalar(select(Department).filter(Department.id == st.department_id)) if st.department_id else None
+
     st_dict = st.__dict__.copy()
     st_dict.update({
         "email": email,
-        "department_name": "Unknown",
-        "programme_name": "Unknown",
+        "department_name": st_dept.name if st_dept else "Unknown",
+        "programme_name": st_prog.name if st_prog else "Unknown",
         "invitation_status": "accepted"
     })
 
+    c_prog = await db.scalar(select(Programme).filter(Programme.id == c.programme_id)) if c.programme_id else None
     c_dict = c.__dict__.copy()
     c_dict.update({
-        "programme_name": "Unknown",
-        "programme_code": "Unknown",
+        "programme_name": c_prog.name if c_prog else "Unknown",
+        "programme_code": c_prog.code if c_prog else "Unknown",
         "lecturer_name": current_user.email,
         "enrolled_student_count": 0,
         "session_count": len(att_list.records)
@@ -402,3 +412,49 @@ async def send_report_warning(
     # Reuse the courses router endpoint
     from app.routers.lecturer.courses import send_warning_email
     return await send_warning_email(course_id, student_id, current_user, db)
+
+@router.get("/weekly-summary", summary="Get Weekly Summary")
+async def get_weekly_summary(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    from datetime import datetime, timedelta
+    lecturer_id = await get_lecturer_id(current_user.id, db)
+    
+    start_of_week = datetime.utcnow() - timedelta(days=datetime.utcnow().weekday())
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    res = await db.execute(
+        select(Session, Course.title, Course.code)
+        .join(Course, Session.course_id == Course.id)
+        .filter(Session.lecturer_id == lecturer_id, Session.started_at >= start_of_week)
+    )
+    records = res.all()
+    
+    sessions = []
+    for s, c_title, c_code in records:
+        att_res = await db.execute(
+            select(
+                func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "present"),
+                func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "absent")
+            ).filter(AttendanceRecord.session_id == s.id)
+        )
+        pres, absnt = att_res.first()
+        sessions.append({
+            "session_id": s.id,
+            "course_title": c_title,
+            "course_code": c_code,
+            "date": s.session_date,
+            "present": pres,
+            "absent": absnt
+        })
+        
+    return {"week_start": start_of_week, "sessions": sessions, "total_sessions": len(sessions)}
+
+@router.get("/export", summary="Export Reports Data")
+async def export_reports(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    # This could export an aggregated Excel of all courses
+    raise HTTPException(status_code=400, detail="Use /lecturer/reports/course/{course_id}/excel to export specific course data.")

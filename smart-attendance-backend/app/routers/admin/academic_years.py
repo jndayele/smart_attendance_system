@@ -120,11 +120,38 @@ async def update_academic_year(
 
 @router.delete("/{year_id}")
 async def delete_academic_year(year_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    # Simple mock check for sessions
+    from app.models.session import Session
     res = await db.execute(select(AcademicYear).filter(AcademicYear.id == year_id))
     year = res.scalars().first()
     if not year: raise HTTPException(status_code=404)
     
+    # Session guard check
+    semesters = await db.execute(select(Semester).where(Semester.academic_year_id == year_id))
+    sem_ids = [s.id for s in semesters.scalars().all()]
+    if sem_ids:
+        # Assuming we need to check if there are any sessions linked to these semesters
+        # But wait, sessions don't have semester_id. We check by date.
+        pass
+    
+    # A simpler way to guard: Check if year has semesters with sessions? Wait, year has semesters.
+    # The prompt: "DELETE /admin/academic-years/{id} — add sessions guard."
+    # If we can't reliably link sessions to years via foreign keys, what's the logic?
+    # Session belongs to Course -> Programme -> Department -> Institution. No direct link to year.
+    # But Session has a date.
+    has_sessions = False
+    for s_id in sem_ids:
+        sem = await db.scalar(select(Semester).filter(Semester.id == s_id))
+        if sem and sem.start_date and sem.end_date:
+            session_count = await db.scalar(
+                select(func.count(Session.id)).where(Session.session_date >= sem.start_date, Session.session_date <= sem.end_date)
+            )
+            if session_count and session_count > 0:
+                has_sessions = True
+                break
+                
+    if has_sessions:
+        raise HTTPException(status_code=409, detail="Cannot delete academic year with existing sessions.")
+
     await db.delete(year)
     await db.commit()
     await NotificationService.log_audit_action(admin.id, "academic_year_deleted", "academic_year", year.id, None, None, db)
@@ -144,6 +171,8 @@ async def create_semester(year_id: str, data: SemesterCreate, db: AsyncSession =
 async def update_semester(year_id: str, sem_id: str, data: SemesterUpdate, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     res = await db.execute(select(Semester).filter(Semester.id == sem_id))
     sem = res.scalars().first()
+    if not sem:
+        raise HTTPException(status_code=404, detail="Semester not found")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(sem, k, v)
     await db.commit()
@@ -163,17 +192,34 @@ async def activate_semester(year_id: str, sem_id: str, db: AsyncSession = Depend
 
 @router.post("/{year_id}/semesters/{sem_id}/close")
 async def close_semester(year_id: str, sem_id: str, body: dict, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+    from app.models.session import Session
+    from sqlalchemy import update
     if body.get("confirm") != "CONFIRM":
         raise HTTPException(status_code=400, detail="Confirmation required")
         
     res = await db.execute(select(Semester).filter(Semester.id == sem_id))
     sem = res.scalars().first()
+    if not sem:
+        raise HTTPException(status_code=404, detail="Semester not found")
+        
     sem.is_closed = True
     sem.is_active = False
     
-    # Archive sessions
-    # ... logic here
+    sessions_archived = 0
+    if sem.start_date and sem.end_date:
+        # Count sessions before archiving
+        sessions_archived = await db.scalar(
+            select(func.count(Session.id)).where(Session.session_date >= sem.start_date, Session.session_date <= sem.end_date)
+        )
+        # Archive sessions
+        await db.execute(
+            update(Session)
+            .where(Session.session_date >= sem.start_date, Session.session_date <= sem.end_date)
+            .values(is_archived=True, is_active=False)
+        )
     
     await db.commit()
-    await NotificationService.log_audit_action(admin.id, "semester_closed", "semester", sem.id, None, None, db)
-    return {"message": "Semester closed and archived", "sessions_archived": 0}
+    await NotificationService.log_audit_action(
+        admin.id, "semester_closed", "semester", sem.id, {"sessions_archived": sessions_archived}, None, db
+    )
+    return {"message": "Semester closed and archived", "sessions_archived": sessions_archived or 0}

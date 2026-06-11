@@ -49,10 +49,24 @@ async def lifespan(app: FastAPI):
     # 2. Preload DeepFace model
     FaceService.preload_model()
     
+    # 3. Start background tasks
+    import asyncio
+    from app.tasks.scanner import start_scheduler
+    from app.tasks.reports import start_report_scheduler
+    from app.tasks.cleanup import start_cleanup_scheduler
+    
+    tasks = [
+        asyncio.create_task(start_scheduler()),
+        asyncio.create_task(start_report_scheduler()),
+        asyncio.create_task(start_cleanup_scheduler())
+    ]
+    
     yield
     
     # Shutdown
     logger.info("Shutting down Smart Attendance System...")
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(

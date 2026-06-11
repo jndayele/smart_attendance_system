@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
@@ -12,5 +12,8 @@ class Institution(Base):
     logo_url = Column(String(500), nullable=True)
     admin_email = Column(String(255), unique=True, nullable=False)
     is_setup = Column(Boolean, default=False)
+    settings_data = Column(JSON, nullable=True, default={})
+    notification_settings = Column(JSON, nullable=True, default={})
+    smtp_settings = Column(JSON, nullable=True, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
