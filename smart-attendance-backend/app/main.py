@@ -9,9 +9,23 @@ from app.config import get_settings
 from app.database import init_db
 from app.services.face_service import FaceService
 from app.routers import auth
-# from app.routers.admin import institution, departments, programmes, courses, lecturers, students, academic_years, reports
-# from app.routers.lecturer import dashboard, courses as lec_courses, sessions, reports as lec_reports
-# from app.routers.student import dashboard as stu_dashboard, attendance, profile
+from app.routers.admin import (
+    institution, departments, programmes, courses, 
+    lecturers, students, academic_years, reports
+)
+from app.routers.lecturer import (
+    dashboard as lecturer_dashboard,
+    courses as lecturer_courses,
+    sessions as lecturer_sessions,
+    reports as lecturer_reports,
+    profile as lecturer_profile,
+)
+from app.routers.student import (
+    dashboard as student_dashboard,
+    attendance as student_attendance,
+    courses as student_courses,
+    profile as student_profile,
+)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -88,12 +102,66 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 # Include Routers
-app.include_router(auth.router, prefix="/api/v1/auth")
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
-# Stubs for other routers (to be implemented)
-# app.include_router(admin_router, prefix="/api/v1/admin")
-# app.include_router(lecturer_router, prefix="/api/v1/lecturer")
-# app.include_router(student_router, prefix="/api/v1/student")
+# Admin Routers
+app.include_router(institution.router, prefix="/api/v1/admin/institution", tags=["admin-institution"])
+app.include_router(departments.router, prefix="/api/v1/admin/departments", tags=["admin-departments"])
+app.include_router(programmes.router, prefix="/api/v1/admin/programmes", tags=["admin-programmes"])
+app.include_router(academic_years.router, prefix="/api/v1/admin/academic-years", tags=["admin-academic-years"])
+app.include_router(courses.router, prefix="/api/v1/admin/courses", tags=["admin-courses"])
+app.include_router(lecturers.router, prefix="/api/v1/admin/lecturers", tags=["admin-lecturers"])
+app.include_router(students.router, prefix="/api/v1/admin/students", tags=["admin-students"])
+app.include_router(reports.router, prefix="/api/v1/admin/reports", tags=["admin-reports"])
+
+# Lecturer Routers
+app.include_router(
+    lecturer_dashboard.router,
+    prefix="/api/v1/lecturer/dashboard",
+    tags=["Lecturer — Dashboard"]
+)
+app.include_router(
+    lecturer_courses.router,
+    prefix="/api/v1/lecturer/courses",
+    tags=["Lecturer — Courses"]
+)
+app.include_router(
+    lecturer_sessions.router,
+    prefix="/api/v1/lecturer/sessions",
+    tags=["Lecturer — Sessions"]
+)
+app.include_router(
+    lecturer_reports.router,
+    prefix="/api/v1/lecturer/reports",
+    tags=["Lecturer — Reports"]
+)
+app.include_router(
+    lecturer_profile.router,
+    prefix="/api/v1/lecturer/profile",
+    tags=["Lecturer — Profile"]
+)
+
+# Student Routers
+app.include_router(
+    student_dashboard.router,
+    prefix="/api/v1/student/dashboard",
+    tags=["Student — Dashboard"]
+)
+app.include_router(
+    student_attendance.router,
+    prefix="/api/v1/student/attendance",
+    tags=["Student — Attendance"]
+)
+app.include_router(
+    student_courses.router,
+    prefix="/api/v1/student/courses",
+    tags=["Student — Courses"]
+)
+app.include_router(
+    student_profile.router,
+    prefix="/api/v1/student/profile",
+    tags=["Student — Profile"]
+)
 
 @app.get("/health", tags=["system"])
 async def health_check():

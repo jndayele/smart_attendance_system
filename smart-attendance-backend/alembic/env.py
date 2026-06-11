@@ -19,6 +19,7 @@ from app.models.student import Student, StudentCourse
 from app.models.session import Session
 from app.models.attendance import AttendanceRecord
 from app.models.notification import Notification, AuditLog
+from app.models.session_code_attempt import SessionCodeAttempt
 from app.database import Base
 from app.config import get_settings
 

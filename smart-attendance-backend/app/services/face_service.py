@@ -169,3 +169,86 @@ class FaceService:
                 
         except Exception as e:
             return {"valid": False, "error": f"Failed to process image: {str(e)}"}
+
+    @staticmethod
+    def compute_sessions_needed(
+        sessions_present: int,
+        sessions_total: int,
+        threshold_pct: int
+    ) -> int:
+        """
+        Computes how many consecutive sessions a student needs to attend to reach the threshold.
+        """
+        import math
+        required = threshold_pct / 100.0
+        if sessions_total == 0:
+            return 0
+        current = sessions_present / sessions_total
+        if current >= required:
+            return 0
+        
+        # (p + x) / (t + x) >= r
+        # p + x >= r*t + r*x
+        # x(1 - r) >= r*t - p
+        # x >= (r*t - p) / (1 - r)
+        
+        if required >= 1.0:
+            # If 100% attendance is required and they missed any, they can never reach 100% technically 
+            # unless they can rewrite history, but mathematically it's infinite. Just return a big number.
+            return 999
+            
+        x = math.ceil((required * sessions_total - sessions_present) / (1 - required))
+        return max(0, int(x))
+
+    @staticmethod
+    def verify_face_from_encoding(
+        live_image_bytes: bytes,
+        stored_encoding: List[float]
+    ) -> Dict[str, Any]:
+        """
+        Primary function for attendance endpoints to verify face encoding.
+        """
+        img = FaceService._bytes_to_image(live_image_bytes)
+        
+        try:
+            results = DeepFace.represent(
+                img_path=img,
+                model_name=settings.FACE_MODEL,
+                detector_backend=settings.FACE_DETECTOR,
+                enforce_detection=True,
+                align=True
+            )
+            
+            if len(results) == 0:
+                raise ValueError("No face detected in the image.")
+            
+            live_encoding = results[0]["embedding"]
+            
+            vec_a = np.array(live_encoding)
+            vec_b = np.array(stored_encoding)
+            
+            dot_product = np.dot(vec_a, vec_b)
+            norm_a = np.linalg.norm(vec_a)
+            norm_b = np.linalg.norm(vec_b)
+            
+            if norm_a == 0 or norm_b == 0:
+                cosine_distance = 1.0
+            else:
+                cosine_distance = 1.0 - (dot_product / (norm_a * norm_b))
+                
+            threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
+            verified = cosine_distance <= threshold_distance
+            confidence = (1.0 - cosine_distance) * 100.0
+            
+            return {
+                "verified": bool(verified),
+                "distance": round(float(cosine_distance), 4),
+                "confidence": round(float(confidence), 2),
+                "threshold_distance": float(threshold_distance),
+                "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD
+            }
+            
+        except ValueError as e:
+            if "Face could not be detected" in str(e):
+                raise ValueError("No face detected in the live image.")
+            raise e
