@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.future import select
 from sqlalchemy import func
-from app.database import async_session_maker
+from app.database import AsyncSessionLocal
 from app.models.course import Course
 from app.models.student import Student, StudentCourse
 from app.models.session import Session
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 async def run_daily_absence_scanner():
     """Check for students who missed X sessions and need alerting."""
     logger.info("Starting Daily Absence Scanner...")
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         # Fetch all active courses
         res_courses = await db.execute(select(Course).filter(Course.is_active == True))
         courses = res_courses.scalars().all()

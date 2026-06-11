@@ -6,6 +6,7 @@ Handles the 5-step attendance marking flow with anti-cheat measures.
 import json
 import logging
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,6 +117,8 @@ async def verify_code(
             attempts_remaining=rem, locked_out=False, message=f"Incorrect code. {rem} attempt(s) remaining."
         )
 
+    # FIX-P0-5: Set verified = True on successful code verification
+    attempt.verified = True
     await db.commit()
     return SessionCodeVerifyResponse(
         verified=True, session_id=session.id, course_title=course.title, course_code=course.code,
@@ -206,9 +209,10 @@ async def mark_face(
     if res_dup.scalars().first():
         raise HTTPException(status_code=400, detail="You have already marked attendance for this session.")
 
+    # FIX-P0-5: Enforce verified=True check for face scan
     res_att = await db.execute(select(SessionCodeAttempt).filter(SessionCodeAttempt.session_id == session.id, SessionCodeAttempt.student_id == student.id))
     attempt = res_att.scalars().first()
-    if not attempt:
+    if not attempt or not attempt.verified:
         raise HTTPException(status_code=403, detail="Session code must be verified first.")
     if attempt.is_locked:
         raise HTTPException(status_code=403, detail="You are locked out of this session.")
@@ -264,9 +268,10 @@ async def mark_qr(
     if res_dup.scalars().first():
         raise HTTPException(status_code=400, detail="You have already marked attendance for this session.")
 
+    # FIX-P0-5: Enforce verified=True check for QR scan
     res_att = await db.execute(select(SessionCodeAttempt).filter(SessionCodeAttempt.session_id == session.id, SessionCodeAttempt.student_id == student.id))
     attempt = res_att.scalars().first()
-    if not attempt:
+    if not attempt or not attempt.verified:
         raise HTTPException(status_code=403, detail="Session code must be verified first.")
     if attempt.is_locked:
         raise HTTPException(status_code=403, detail="You are locked out of this session.")
@@ -321,10 +326,11 @@ async def check_session_status(
         "course_code": course.code,
         "is_enrolled": is_enrolled,
         "already_marked": already_marked,
-        "check_in_record": None, # Could populate with AttendanceRecordResponse if needed
+        "check_in_record": None,
         "session_is_active": session.is_active,
         "session_is_locked": session.is_locked,
         "is_locked_out": attempt.is_locked if attempt else False,
+        "code_verified": attempt.verified if attempt else False,
         "attempts_used": attempt.attempts if attempt else 0,
         "attempts_remaining": 3 - (attempt.attempts if attempt else 0),
         "current_attendance_pct": pct,
@@ -377,21 +383,46 @@ async def get_history(
     rows = res.all()
 
     items = []
+    present_count = 0
+    absent_count = 0
     for ar, s, c, s_name, s_id in rows:
+        status_val = ar.status.value if hasattr(ar.status, 'value') else str(ar.status)
+        if status_val == "present":
+            present_count += 1
+        else:
+            absent_count += 1
         items.append(AttendanceRecordResponse(
             id=ar.id,
             session_id=s.id,
+            session_label=s.label,
+            session_date=s.session_date,
             student_id=ar.student_id,
             student_name=s_name,
             student_number=s_id,
-            status=ar.status.value,
-            method=ar.method.value if ar.method else None,
+            course_id=c.id,
+            course_title=c.title,
+            course_code=c.code,
             checked_in_at=ar.checked_in_at,
+            method=ar.method.value if ar.method else None,
+            status=status_val,
             is_manual_override=ar.is_manual_override,
-            notes=ar.notes
+            override_reason=ar.override_reason,
+            notes=None,
+            created_at=ar.created_at
         ))
 
-    return AttendanceListResponse(items=items, total=total, page=page, limit=limit)
+    attendance_pct = (present_count / total * 100) if total > 0 else 0.0
+
+    # FIX-P0-2: Use 'records' field name
+    return AttendanceListResponse(
+        records=items,
+        total=total,
+        present_count=present_count,
+        absent_count=absent_count,
+        attendance_pct=round(attendance_pct, 2),
+        page=page,
+        limit=limit
+    )
 
 
 @router.get("/history/course/{course_id}", response_model=StudentAttendanceHistoryResponse, summary="Get Course Attendance History")
@@ -464,14 +495,21 @@ async def get_course_history(
         records_resp.append(AttendanceRecordResponse(
             id=ar.id,
             session_id=s.id,
+            session_label=s.label,
+            session_date=s.session_date,
             student_id=ar.student_id,
             student_name=student.name,
             student_number=student.student_id,
-            status=ar.status.value,
-            method=ar.method.value if ar.method else None,
+            course_id=c.id,
+            course_title=c.title,
+            course_code=c.code,
             checked_in_at=ar.checked_in_at,
+            method=ar.method.value if ar.method else None,
+            status=ar.status.value,
             is_manual_override=ar.is_manual_override,
-            notes=ar.notes
+            override_reason=ar.override_reason,
+            notes=None,
+            created_at=ar.created_at
         ))
 
     sessions_total = len(all_sessions)

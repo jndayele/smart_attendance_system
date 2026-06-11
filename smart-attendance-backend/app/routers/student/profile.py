@@ -8,7 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, update
 
 from app.database import get_db
 from app.dependencies import require_student
@@ -20,7 +20,7 @@ from app.models.notification import Notification
 from app.models.course import Course
 from app.models.session import Session
 from app.models.attendance import AttendanceRecord
-from app.utils.security import verify_password, get_password_hash
+from app.utils.security import verify_password, hash_password
 from app.services.face_service import FaceService
 from app.services.notification_service import NotificationService
 from app.schemas.student_portal import (
@@ -73,7 +73,7 @@ async def get_profile(
         level=student.level,
         semester_of_entry=student.semester_of_entry,
         face_registered=student.face_registered,
-        is_active=student.is_active,
+        is_active=current_user.is_active,
         last_login=current_user.last_login,
         created_at=student.created_at,
         enrolled_courses=dashboard_data.enrolled_courses,
@@ -92,7 +92,7 @@ async def update_profile(
     if updates.display_name is not None:
         student.name = updates.display_name
     if updates.phone is not None:
-        pass # Phone field might exist on User or Student in future, but currently unused in schemas outside this prompt. We'll leave it or assume it's ignored for now as per models.
+        student.phone = updates.phone
         
     await db.commit()
     await db.refresh(student)
@@ -131,7 +131,7 @@ async def change_password(
     if not (has_digit and has_special):
         raise HTTPException(status_code=422, detail="Password must contain at least one number and one special character.")
 
-    current_user.password_hash = get_password_hash(req.new_password)
+    current_user.password_hash = hash_password(req.new_password)
     await db.commit()
 
     await NotificationService.log_audit_action(
@@ -221,10 +221,27 @@ async def get_notifications(
     res_total = await db.execute(select(func.count(Notification.id)).select_from(query.subquery()))
     total = res_total.scalar() or 0
 
-    res = await db.execute(query.offset((page - 1) * limit).limit(limit))
-    items = [NotificationResponse.model_validate(n) for n in res.scalars().all()]
+    res_unread = await db.execute(
+        select(func.count(Notification.id))
+        .filter(Notification.user_id == current_user.id, Notification.is_read == False)
+    )
+    unread_count = res_unread.scalar() or 0
 
-    return NotificationListResponse(items=items, total=total, page=page, limit=limit)
+    res = await db.execute(query.offset((page - 1) * limit).limit(limit))
+    notifications = res.scalars().all()
+
+    notif_list = [
+        NotificationResponse(
+            id=n.id,
+            type=n.type,
+            title=n.title,
+            message=n.message,
+            is_read=n.is_read,
+            created_at=n.created_at
+        ) for n in notifications
+    ]
+
+    return NotificationListResponse(notifications=notif_list, total=total, unread_count=unread_count)
 
 
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationResponse, summary="Mark Notification as Read")
@@ -243,7 +260,14 @@ async def mark_notification_read(
     n.is_read = True
     await db.commit()
     await db.refresh(n)
-    return NotificationResponse.model_validate(n)
+    return NotificationResponse(
+        id=n.id,
+        type=n.type,
+        title=n.title,
+        message=n.message,
+        is_read=n.is_read,
+        created_at=n.created_at
+    )
 
 
 @router.post("/notifications/mark-all-read", summary="Mark All Notifications as Read")
@@ -251,7 +275,6 @@ async def mark_all_notifications_read(
     current_user: User = Depends(require_student),
     db: AsyncSession = Depends(get_db)
 ):
-    from sqlalchemy import update
     await db.execute(
         update(Notification)
         .where(Notification.user_id == current_user.id)
@@ -282,17 +305,26 @@ async def delete_notification(
 
 @router.get("/notification-preferences", response_model=StudentNotificationPreferences, summary="Get Notification Preferences")
 async def get_notification_preferences(
-    current_user: User = Depends(require_student)
+    current_user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db)
 ):
-    # Currently stored globally or mocked since we don't have a StudentNotificationPreferences model
-    # Assuming default values or mocked retrieval as per schema.
-    return StudentNotificationPreferences(
-        alert_below_80=True,
-        alert_below_75=True,
-        session_started_alert=True,
-        session_ending_soon=True,
-        weekly_summary=True
-    )
+    # Fetch fresh user object with notification_preferences JSON field
+    res = await db.execute(select(User).filter(User.id == current_user.id))
+    user = res.scalars().first()
+    prefs = (user.notification_preferences or {}) if user else {}
+
+    defaults = {
+        "alert_below_80": True,
+        "alert_below_75": True,
+        "alert_below_70": True,
+        "session_started_alert": True,
+        "session_ending_soon": True,
+        "weekly_summary": False
+    }
+    merged = {**defaults, **prefs}
+    # Institution policy — alert_below_75 is always True
+    merged["alert_below_75"] = True
+    return StudentNotificationPreferences(**merged)
 
 
 @router.patch("/notification-preferences", response_model=StudentNotificationPreferences, summary="Update Notification Preferences")
@@ -301,19 +333,27 @@ async def update_notification_preferences(
     current_user: User = Depends(require_student),
     db: AsyncSession = Depends(get_db)
 ):
-    # Store logic would go here
-    # Enforce alert_below_75 cannot be False
-    if prefs.alert_below_75 is False:
-        prefs.alert_below_75 = True
-        
+    res = await db.execute(select(User).filter(User.id == current_user.id))
+    user = res.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = user.notification_preferences or {}
+    incoming = prefs.model_dump()
+    # Silently enforce institution policy
+    incoming["alert_below_75"] = True
+    updated = {**existing, **incoming}
+    user.notification_preferences = updated
+    await db.commit()
+
     await NotificationService.log_audit_action(
         performed_by=current_user.id,
         action="student_notification_preferences_updated",
         entity_type="student",
         entity_id=current_user.id,
-        details=prefs.model_dump(),
+        details=updated,
         ip_address=None,
         db=db
     )
     
-    return prefs
+    return StudentNotificationPreferences(**updated)

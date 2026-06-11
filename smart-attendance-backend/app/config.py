@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     ATTENDANCE_DEFAULT_THRESHOLD: int = 75
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
+    # Frontend
+    FRONTEND_URL: str = "http://localhost:3000"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

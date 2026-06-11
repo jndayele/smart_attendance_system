@@ -1,5 +1,10 @@
 import asyncio
+import sys
+import os
 from logging.config import fileConfig
+
+# Add the root directory to sys.path so alembic can find 'app'
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection

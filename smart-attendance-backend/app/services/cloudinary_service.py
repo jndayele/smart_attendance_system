@@ -5,9 +5,9 @@ from app.config import get_settings
 settings = get_settings()
 
 cloudinary.config(
-    cloud_name=settings.cloudinary_cloud_name,
-    api_key=settings.cloudinary_api_key,
-    api_secret=settings.cloudinary_api_secret
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET
 )
 
 async def upload_image(file_bytes: bytes, folder: str = "institution_logos", 

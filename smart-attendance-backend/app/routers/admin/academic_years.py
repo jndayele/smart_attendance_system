@@ -215,7 +215,7 @@ async def close_semester(year_id: str, sem_id: str, body: dict, db: AsyncSession
         await db.execute(
             update(Session)
             .where(Session.session_date >= sem.start_date, Session.session_date <= sem.end_date)
-            .values(is_archived=True, is_active=False)
+            .values(is_archived=True, is_active=False, is_locked=True)
         )
     
     await db.commit()

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.future import select
-from app.database import async_session_maker
+from app.database import AsyncSessionLocal
 from app.models.course import Course
 from app.models.lecturer import Lecturer
 from app.models.user import User
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 async def run_scheduled_reports():
     """Generate and email scheduled weekly reports to lecturers."""
     logger.info("Starting Scheduled Reports task...")
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         res = await db.execute(select(Course).filter(Course.is_active == True))
         courses = res.scalars().all()
         

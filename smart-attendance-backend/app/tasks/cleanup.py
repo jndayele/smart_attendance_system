@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from sqlalchemy.future import select
 from sqlalchemy import update
-from app.database import async_session_maker
+from app.database import AsyncSessionLocal
 from app.models.session import Session
 from app.models.session_code_attempt import SessionCodeAttempt
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 async def run_cleanup_tasks():
     """Clear expired QR codes and reset locked out sessions."""
     logger.info("Starting Background Cleanup Task...")
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         now = datetime.utcnow()
         
         # Clear expired QR codes

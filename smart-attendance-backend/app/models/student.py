@@ -16,6 +16,7 @@ class Student(Base):
     level = Column(Integer, nullable=False)
     semester_of_entry = Column(Integer, nullable=False)
     name = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=True)
     
     # Stores ArcFace 512-dimensional float vector as a JSON array
     face_encoding = Column(JSON, nullable=True)

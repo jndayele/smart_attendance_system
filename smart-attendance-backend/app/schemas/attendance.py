@@ -3,7 +3,7 @@ Attendance Pydantic schemas for the Lecturer Module.
 
 Covers individual attendance records and paginated list responses.
 """
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional
 from uuid import UUID
 
@@ -19,19 +19,20 @@ class AttendanceRecordResponse(BaseModel):
     id: UUID
     session_id: UUID
     session_label: Optional[str] = None
-    session_date: datetime.date
+    session_date: Optional[date] = None
     student_id: UUID
     student_name: str
     student_number: str
-    course_id: UUID
-    course_title: str
-    course_code: str
+    course_id: Optional[UUID] = None
+    course_title: Optional[str] = None
+    course_code: Optional[str] = None
     checked_in_at: Optional[datetime] = None
     method: Optional[str] = None
     status: str
     is_manual_override: bool
     override_reason: Optional[str] = None
-    created_at: datetime
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -47,3 +48,5 @@ class AttendanceListResponse(BaseModel):
     present_count: int
     absent_count: int
     attendance_pct: float
+    page: int = 1
+    limit: int = 50

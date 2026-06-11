@@ -20,6 +20,7 @@ from app.models.course import Course
 from app.models.student import Student, StudentCourse
 from app.models.session import Session
 from app.models.attendance import AttendanceRecord
+from app.models.programme import Programme
 from app.schemas.course import CourseResponse
 from app.schemas.session import SessionSummary
 from app.schemas.lecturer import CourseStudentRow, AtRiskStudent

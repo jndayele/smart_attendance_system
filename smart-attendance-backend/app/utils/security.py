@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
-from passlib.context import CryptContext
+import bcrypt
 from jose import jwt, JWTError
 from fastapi import HTTPException, status
 
@@ -12,15 +12,18 @@ from app.config import get_settings
 
 settings = get_settings()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def hash_password(plain: str) -> str:
     """Hash a password for storing."""
-    return pwd_context.hash(plain)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(plain.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a hashed password."""
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Create a new JWT access token."""
