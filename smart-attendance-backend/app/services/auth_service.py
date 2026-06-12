@@ -8,7 +8,6 @@ from app.models.institution import Institution
 from app.models.user import User, RoleEnum
 from app.models.lecturer import Lecturer
 from app.models.student import Student
-from app.schemas.auth import SetupRequest
 from app.utils.security import (
     hash_password, verify_password, create_access_token, 
     create_reset_token, decode_token
@@ -19,34 +18,6 @@ from app.config import get_settings
 settings = get_settings()
 
 class AuthService:
-    @staticmethod
-    async def setup_institution(db: AsyncSession, request: SetupRequest) -> Tuple[str, str]:
-        result = await db.execute(select(Institution).filter(Institution.is_setup == True))
-        if result.scalars().first():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="System is already set up.")
-
-        institution = Institution(
-            name=request.institution_name,
-            admin_email=request.admin_email,
-            is_setup=True
-        )
-        db.add(institution)
-        
-        admin_user = User(
-            email=request.admin_email,
-            password_hash=hash_password(request.admin_password),
-            role=RoleEnum.admin,
-            is_active=True,
-            is_verified=True
-        )
-        db.add(admin_user)
-        
-        await db.commit()
-        await db.refresh(institution)
-        await db.refresh(admin_user)
-
-        access_token = create_access_token(data={"sub": str(admin_user.id), "role": admin_user.role.value})
-        return access_token, str(institution.id)
 
     @staticmethod
     async def login_user(db: AsyncSession, email: str, password: str, ip_address: Optional[str] = None) -> Tuple[str, str, str, Optional[str]]:

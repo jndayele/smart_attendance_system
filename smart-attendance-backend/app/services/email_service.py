@@ -219,3 +219,22 @@ async def send_weekly_lecturer_summary_email(
     </html>
     """
     await _send_html_email(subject, to_email, html)
+
+async def send_admin_welcome_email(to_email: str, admin_name: str, institution_name: str, generated_password: str, login_url: str) -> None:
+    subject = f"Welcome to {institution_name} — Your Admin Account"
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif;">
+        <h2>Welcome to {institution_name}</h2>
+        <p>Hi {admin_name},</p>
+        <p>Your administrator account has been successfully created.</p>
+        <p><strong>Your login email:</strong> {to_email}</p>
+        <p><strong>Your temporary password:</strong> {generated_password}</p>
+        <p>Please log in and change your password immediately.</p>
+        <a href="{login_url}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Login to Your Dashboard</a>
+        <hr>
+        <p><small>{settings.APP_NAME} System Notification</small></p>
+    </body>
+    </html>
+    """
+    await _send_html_email(subject, to_email, html)

@@ -77,3 +77,31 @@ def generate_session_code(length: int = 6) -> str:
 def generate_qr_token() -> str:
     """Generate a unique UUID-based token for QR codes."""
     return str(uuid.uuid4())
+
+def generate_secure_password(length: int = 12) -> str:
+    """
+    Generate a cryptographically secure random password.
+    Guarantees at least one uppercase, lowercase, digit, and
+    special character. Default length: 12.
+    """
+    import secrets
+    import string
+
+    uppercase = string.ascii_uppercase
+    lowercase = string.ascii_lowercase
+    digits = string.digits
+    special = "!@#$%^&*"
+
+    password = [
+        secrets.choice(uppercase),
+        secrets.choice(lowercase),
+        secrets.choice(digits),
+        secrets.choice(special),
+    ]
+
+    all_chars = uppercase + lowercase + digits + special
+    for _ in range(length - 4):
+        password.append(secrets.choice(all_chars))
+
+    secrets.SystemRandom().shuffle(password)
+    return ''.join(password)
