@@ -596,7 +596,7 @@ export default function AdminApp() {
             <PageSkeleton variant={skeletonVariant[view] || "table"} />
           ) : (
             <>
-              {view === "dashboard" && <Dashboard onNav={navigate} />}
+              {view === "dashboard" && <Dashboard onNav={navigate} setup={setup} />}
               {view === "departments" && <DepartmentsView
                 departments={departments} setDepartments={setDepartments}
                 openSlide={setSlide} confirm={setConfirm} toast={toast} onNav={navigate} />}
@@ -753,8 +753,18 @@ function Header({ view, onMenu }: { view: string; onMenu?: () => void }) {
 /* ============================================================
    DASHBOARD
 ============================================================ */
-function Dashboard({ onNav }: { onNav: (id: string, ctx?: any) => void }) {
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function Dashboard({ onNav, setup }: { onNav: (id: string, ctx?: any) => void; setup?: Setup }) {
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const greeting = getTimeBasedGreeting();
+  const adminName = setup?.adminName || "Admin";
+  const institutionName = setup?.name || INSTITUTION;
   const stats = [
     { label: "Total Students", value: "1,247", icon: UserCheck, color: C.amber, trend: "+24 this week", up: true },
     { label: "Total Lecturers", value: "48", icon: Users, color: C.blue, trend: "+2 this week", up: true },
@@ -768,8 +778,8 @@ function Dashboard({ onNav }: { onNav: (id: string, ctx?: any) => void }) {
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: C.text }}>Good morning, Admin</h1>
-          <p className="text-sm mt-1" style={{ color: C.textSec }}>{today} · {INSTITUTION}</p>
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: C.text }}>{greeting}, {adminName}</h1>
+          <p className="text-sm mt-1" style={{ color: C.textSec }}>{today} · {institutionName}</p>
         </div>
       </div>
 
