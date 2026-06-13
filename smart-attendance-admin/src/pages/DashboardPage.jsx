@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
 import TopHeader from '@/components/layout/TopHeader';
-import StatCard from '@/components/ui-custom/StatCard';
+import StatCard from '@/components/ui-custom/StatCards';
 import AttendanceTrendChart from '@/components/charts/AttendanceTrendChart';
 import PresentAbsentDonut from '@/components/charts/PresentAbsentDonut';
 import DeptBarChart from '@/components/charts/DeptBarChart';
@@ -10,6 +10,7 @@ import {
   Users, UserCheck, BookOpen, Building2, Clock, AlertTriangle,
   Plus, BarChart3, UserPlus, FileText, Zap, CheckCircle
 } from 'lucide-react';
+import StatCards from '@/components/ui-custom/StatCards';
 
 const activityFeed = [
   { type: 'student_registered', text: 'Kwame Asante registered via face enrollment', time: '2 min ago', color: '#10B981' },

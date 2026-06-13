@@ -17,7 +17,7 @@ import CoursesPage from '@/pages/CoursesPage';
 import AcademicYearsPage from '@/pages/AcademicYearsPage';
 import LecturersPage from '@/pages/LecturersPage';
 import StudentsPage from '@/pages/StudentsPage';
-import ReportsPage from '@/pages/ReportsPage';
+import ReportsPage from '@/pages/ReportPage';
 import NotificationsPage from '@/pages/NotificationsPage';
 import SettingsPage from '@/pages/SettingsPage';
 
