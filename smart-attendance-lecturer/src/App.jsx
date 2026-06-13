@@ -4,66 +4,64 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import { AppProvider, useAppConfig } from '@/context/AppContext';
-import { ToastProvider } from '@/components/ui-custom/ToastProvider';
-import AppShell from '@/components/layout/AppShell';
-import SetupPage from '@/pages/SetupPage';
-import LoginPage from '@/pages/LoginPage';
-import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
-import DashboardPage from '@/pages/DashboardPage';
-import DepartmentsPage from '@/pages/DepartmentsPage';
-import ProgrammesPage from '@/pages/ProgrammesPage';
-import CoursesPage from '@/pages/CoursesPage';
-import AcademicYearsPage from '@/pages/AcademicYearsPage';
-import LecturersPage from '@/pages/LecturersPage';
-import StudentsPage from '@/pages/StudentsPage';
-import ReportsPage from '@/pages/ReportsPage';
-import NotificationsPage from '@/pages/NotificationsPage';
-import SettingsPage from '@/pages/SettingsPage';
+
+import { AppProvider } from './context/AppContext';
+import { LecturerAuthProvider, useLecturerAuth } from './context/LecturerAuthContext';
+import { SessionProvider } from './context/SessionContext';
+import { ToastProvider } from './components/shared/ToastManager';
+import AppShell from './components/layout/AppShell';
+
+import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import AccountActivationPage from './pages/AccountActivationPage';
+import DashboardPage from './pages/DashboardPage';
+import CoursesPage from './pages/CoursesPage';
+import CourseDetailPage from './pages/CourseDetailPage';
+import ActiveSessionPage from './pages/ActiveSessionPage';
+import SessionHistoryPage from './pages/SessionHistoryPage';
+import ReportsPage from './pages/ReportsPage';
+import NotificationsPage from './pages/NotificationsPage';
+import ProfilePage from './pages/ProfilePage';
+
+function LecturerProtectedRoute({ children }) {
+  const { lecturer } = useLecturerAuth();
+  if (!lecturer.isLoggedIn) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function PublicRoute({ children }) {
+  const { lecturer } = useLecturerAuth();
+  if (lecturer.isLoggedIn) return <Navigate to="/dashboard" replace />;
+  return children;
+}
 
 function AppRoutes() {
-  const { config } = useAppConfig();
-
-  // Not setup yet → force to setup
-  if (!config.isSetupComplete) {
-    return (
-      <Routes>
-        <Route path="/setup" element={<SetupPage />} />
-        <Route path="*" element={<Navigate to="/setup" replace />} />
-      </Routes>
-    );
-  }
-
-  // Setup complete but not logged in
-  if (!config.isLoggedIn) {
-    return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    );
-  }
-
-  // Authenticated
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      {/* Public routes */}
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/activate" element={<AccountActivationPage />} />
+
+      {/* Protected routes inside AppShell */}
+      <Route element={
+        <LecturerProtectedRoute>
+          <AppShell />
+        </LecturerProtectedRoute>
+      }>
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/departments" element={<DepartmentsPage />} />
-        <Route path="/programmes" element={<ProgrammesPage />} />
         <Route path="/courses" element={<CoursesPage />} />
-        <Route path="/academic-years" element={<AcademicYearsPage />} />
-        <Route path="/lecturers" element={<LecturersPage />} />
-        <Route path="/students" element={<StudentsPage />} />
+        <Route path="/courses/:id" element={<CourseDetailPage />} />
+        <Route path="/session/active" element={<ActiveSessionPage />} />
+        <Route path="/sessions" element={<SessionHistoryPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/setup" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      {/* Default redirect */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
@@ -85,21 +83,27 @@ const AuthenticatedApp = () => {
     }
   }
 
-  return <AppRoutes />;
+  return (
+    <AppProvider>
+      <LecturerAuthProvider>
+        <SessionProvider>
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
+        </SessionProvider>
+      </LecturerAuthProvider>
+    </AppProvider>
+  );
 };
 
 function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
-        <AppProvider>
-          <ToastProvider>
-            <Router>
-              <AuthenticatedApp />
-            </Router>
-            <Toaster />
-          </ToastProvider>
-        </AppProvider>
+        <Router>
+          <AuthenticatedApp />
+        </Router>
+        <Toaster />
       </QueryClientProvider>
     </AuthProvider>
   )
