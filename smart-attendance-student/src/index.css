@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Playfair+Display:wght@700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent-primary: #F59E0B;
+  --bg-deep: #0F1623;
+  --bg-surface: #1A2236;
+  --bg-raised: #212D42;
+  --border-subtle: rgba(255,255,255,0.07);
+  --border-input: rgba(255,255,255,0.12);
+  --text-primary: #F0F4FF;
+  --text-secondary: #8B9DC3;
+  --text-muted: #4A5C80;
+  --accent-green: #10B981;
+  --accent-red: #EF4444;
+  --accent-blue: #3B82F6;
+  --accent-purple: #8B5CF6;
+
+  --background: 222 30% 7%;
+  --foreground: 226 100% 97%;
+  --card: 222 28% 16%;
+  --card-foreground: 226 100% 97%;
+  --popover: 222 28% 16%;
+  --popover-foreground: 226 100% 97%;
+  --primary: 43 96% 56%;
+  --primary-foreground: 222 30% 7%;
+  --secondary: 222 25% 20%;
+  --secondary-foreground: 226 100% 97%;
+  --muted: 222 25% 20%;
+  --muted-foreground: 222 30% 55%;
+  --accent: 222 25% 20%;
+  --accent-foreground: 226 100% 97%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 226 100% 97%;
+  --border: 222 28% 16%;
+  --input: 222 28% 16%;
+  --ring: 43 96% 56%;
+  --radius: 0.625rem;
+  --font-heading: 'Playfair Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-display: 'Playfair Display', serif;
+}
+
+.dark {
+  --background: 222 30% 7%;
+  --foreground: 226 100% 97%;
+  --card: 222 28% 16%;
+  --card-foreground: 226 100% 97%;
+  --popover: 222 28% 16%;
+  --popover-foreground: 226 100% 97%;
+  --primary: 43 96% 56%;
+  --primary-foreground: 222 30% 7%;
+  --secondary: 222 25% 20%;
+  --secondary-foreground: 226 100% 97%;
+  --muted: 222 25% 20%;
+  --muted-foreground: 222 30% 55%;
+  --accent: 222 25% 20%;
+  --accent-foreground: 226 100% 97%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 226 100% 97%;
+  --border: 222 28% 16%;
+  --input: 222 28% 16%;
+  --ring: 43 96% 56%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    background-color: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-raised);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Slide-over animation */
+.slide-over-enter {
+  transform: translateX(100%);
+}
+.slide-over-active {
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-over-exit {
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Table row alternating */
+.table-row-even {
+  background-color: var(--bg-surface);
+}
+.table-row-odd {
+  background-color: #1C2640;
+}

@@ -43,7 +43,13 @@ class SMTPSettingsUpdate(BaseModel):
 class InstitutionResponse(BaseModel):
     id: UUID
     name: str
+    shortcode: Optional[str] = None
+    tagline: Optional[str] = None
+    country: Optional[str] = None
+    timezone: Optional[str] = None
+    accent_color: Optional[str] = None
     logo_url: Optional[str] = None
+    admin_name: Optional[str] = None
     admin_email: str
     is_setup: bool
     created_at: datetime

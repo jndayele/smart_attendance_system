@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, case
 from typing import Dict, Any
 import base64
 from datetime import datetime, timedelta
@@ -291,7 +291,7 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
     from app.models.programme import Programme
     
     dept_res = await db.execute(
-        select(Department.name, func.count(AttendanceRecord.id), func.sum(func.case((AttendanceRecord.status == "present", 1), else_=0)))
+        select(Department.name, func.count(AttendanceRecord.id), func.sum(case((AttendanceRecord.status == "present", 1), else_=0)))
         .select_from(Department)
         .join(Programme, Programme.department_id == Department.id)
         .join(Course, Course.programme_id == Programme.id)
@@ -310,7 +310,7 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
     today_abs = await db.scalar(select(func.count(AttendanceRecord.id)).join(Session).where(Session.session_date == today, AttendanceRecord.status == "absent"))
     
     lowest_res = await db.execute(
-        select(Course.title, Course.code, Programme.name, func.count(AttendanceRecord.id), func.sum(func.case((AttendanceRecord.status == "present", 1), else_=0)))
+        select(Course.title, Course.code, Programme.name, func.count(AttendanceRecord.id), func.sum(case((AttendanceRecord.status == "present", 1), else_=0)))
         .select_from(Course)
         .join(Programme, Course.programme_id == Programme.id)
         .join(Session, Session.course_id == Course.id)
