@@ -1,21 +1,38 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
-import { GraduationCap, ArrowLeft, Mail } from 'lucide-react';
+import { authAPI } from '@/api/api';
+import { GraduationCap, ArrowLeft, Mail, Loader2 } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const { config } = useAppConfig();
   const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (email.trim()) setSent(true);
+    if (!email.trim()) return;
+    setError('');
+    setLoading(true);
+
+    try {
+      await authAPI.forgotPassword(email.trim().toLowerCase());
+    } catch {
+      // Backend always returns a generic success message for security
+      // so any error here is a network / server issue
+      // We still show success to avoid leaking which emails exist
+    } finally {
+      setLoading(false);
+      setSent(true); // Always show success
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'var(--bg-deep)' }}>
       <div className="w-full max-w-md">
+        {/* Logo & institution */}
         <div className="text-center mb-8">
           {config.logoUrl ? (
             <img src={config.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl mx-auto mb-3 object-cover" />
@@ -33,7 +50,9 @@ export default function ForgotPasswordPage() {
           {!sent ? (
             <>
               <h2 className="font-heading text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Reset your password</h2>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Enter your email and we'll send a reset link.</p>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+                Enter your admin email and we'll send a reset link.
+              </p>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Email</label>
@@ -46,15 +65,23 @@ export default function ForgotPasswordPage() {
                     style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
                     onFocus={e => e.target.style.borderColor = 'var(--accent-primary)'}
                     onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
+                    autoComplete="email"
                     required
+                    disabled={loading}
                   />
                 </div>
+                {error && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>}
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                   style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
                 >
-                  Send Reset Link
+                  {loading ? (
+                    <><Loader2 size={16} className="animate-spin" /> Sending...</>
+                  ) : (
+                    'Send Reset Link'
+                  )}
                 </button>
               </form>
             </>
@@ -65,12 +92,16 @@ export default function ForgotPasswordPage() {
               </div>
               <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Check your inbox</h3>
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                A reset link has been sent to <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
+                If an account exists for <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>, a password reset link has been sent.
               </p>
             </div>
           )}
 
-          <Link to="/login" className="flex items-center justify-center gap-2 mt-6 text-xs font-medium hover:underline" style={{ color: 'var(--accent-primary)' }}>
+          <Link
+            to="/login"
+            className="flex items-center justify-center gap-2 mt-6 text-xs font-medium hover:underline"
+            style={{ color: 'var(--accent-primary)' }}
+          >
             <ArrowLeft size={14} /> Back to login
           </Link>
         </div>

@@ -35,7 +35,9 @@ async def check_setup_status(db: AsyncSession = Depends(get_db)):
     inst = result.scalars().first()
     return {
         "is_setup": bool(inst and inst.is_setup),
-        "institution_name": inst.name if inst else None
+        "institution_name": inst.name if inst else None,
+        "shortcode": inst.shortcode if inst else None,
+        "logo_url": inst.logo_url if inst else None
     }
 
 @router.post("/setup", status_code=status.HTTP_201_CREATED, response_model=InstitutionSetupResponse)

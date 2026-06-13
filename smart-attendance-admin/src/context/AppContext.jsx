@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { authAPI, institutionAPI, getToken, setToken, clearToken } from '@/api/api';
 
 const AppContext = createContext(null);
 
 const DEFAULT_STATE = {
+  // Institution info (populated from backend after login or setup)
   institutionName: '',
   shortCode: '',
   tagline: '',
@@ -10,31 +12,123 @@ const DEFAULT_STATE = {
   timezone: '',
   logoUrl: '',
   accentColor: '#F59E0B',
-  adminName: '',
-  adminEmail: '',
   academicYear: '',
   currentSemester: '',
-  isSetupComplete: false,
-  isLoggedIn: false,
+
+  // Auth state
+  isSetupComplete: false,    // Driven by GET /auth/setup-status
+  isLoggedIn: false,         // Driven by presence of valid token
+  userName: '',              // From GET /auth/me — display_name / name
+  userEmail: '',             // From GET /auth/me
+  userRole: '',              // From GET /auth/me
+
+  // Loading flag for initial bootstrap
+  isBootstrapping: true,
 };
 
 export function AppProvider({ children }) {
-  const [config, setConfig] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sas_config');
-      if (saved) return { ...DEFAULT_STATE, ...JSON.parse(saved) };
-    } catch (e) { /* ignore */ }
-    return DEFAULT_STATE;
-  });
+  const [config, setConfig] = useState(DEFAULT_STATE);
 
+  // ── Bootstrap on mount ────────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem('sas_config', JSON.stringify(config));
+    bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const bootstrap = async () => {
+    try {
+      // 1. Always check if the institution is set up
+      const statusData = await authAPI.checkSetupStatus();
+      const isSetupComplete = Boolean(statusData?.is_setup);
+
+      if (!isSetupComplete) {
+        // Not set up at all — show setup wizard
+        setConfig(prev => ({
+          ...prev,
+          isSetupComplete: false,
+          isLoggedIn: false,
+          isBootstrapping: false,
+        }));
+        return;
+      }
+
+      // 2. Check for a stored JWT. If no token, and setup is complete, show login.
+      const token = getToken();
+      if (!token) {
+        setConfig(prev => ({
+          ...prev,
+          isSetupComplete: isSetupComplete,
+          institutionName: statusData?.institution_name || '',
+          shortCode: statusData?.shortcode || '',
+          logoUrl: statusData?.logo_url || '',
+          isLoggedIn: false,
+          isBootstrapping: false,
+        }));
+        return;
+      }
+
+      // 3. Token exists — validate it and populate user + institution data
+      try {
+        const [meData, instData] = await Promise.all([
+          authAPI.me(),
+          institutionAPI.get(),
+        ]);
+
+        setConfig(prev => ({
+          ...prev,
+          isSetupComplete: true,
+          isLoggedIn: true,
+          isBootstrapping: false,
+          userName: meData.name || 'Administrator',
+          userEmail: meData.email,
+          userRole: meData.role,
+          ...mapInstitution(instData),
+        }));
+      } catch {
+        // Token invalid/expired — force re-login
+        clearToken();
+        setConfig(prev => ({
+          ...prev,
+          isSetupComplete: isSetupComplete,
+          isLoggedIn: false,
+          isBootstrapping: false,
+        }));
+      }
+    } catch (err) {
+      console.error('Bootstrap failed:', err);
+      // If backend is unreachable, fall back to last known state from localStorage
+      const saved = getSaved();
+      setConfig(prev => ({
+        ...prev,
+        ...saved,
+        isBootstrapping: false,
+      }));
+    }
+  };
+
+  // ── Persist minimal config to localStorage for offline resilience ──────────
+  useEffect(() => {
+    if (!config.isBootstrapping) {
+      const toSave = {
+        accentColor: config.accentColor,
+        logoUrl: config.logoUrl,
+        shortCode: config.shortCode,
+        institutionName: config.institutionName,
+        tagline: config.tagline,
+        academicYear: config.academicYear,
+        currentSemester: config.currentSemester,
+        isSetupComplete: config.isSetupComplete,
+      };
+      localStorage.setItem('sas_config', JSON.stringify(toSave));
+    }
   }, [config]);
 
+  // ── Apply accent color to CSS variable ───────────────────────────────────
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-primary', config.accentColor);
   }, [config.accentColor]);
 
+  // ── Apply institution logo as favicon ─────────────────────────────────────
   useEffect(() => {
     const link = document.querySelector("link[rel='icon']") || (() => {
       const l = document.createElement('link');
@@ -53,12 +147,50 @@ export function AppProvider({ children }) {
     }
   }, [config.logoUrl, config.accentColor]);
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  /** Called after successful login: stores token, populates user + institution data */
+  const loginSuccess = useCallback((token, meData, instData) => {
+    setToken(token);
+    setConfig(prev => ({
+      ...prev,
+      isLoggedIn: true,
+      isSetupComplete: true,
+      userName: meData.name || 'Administrator',
+      userEmail: meData.email,
+      userRole: meData.role,
+      ...mapInstitution(instData),
+    }));
+  }, []);
+
+  /** Called after successful setup: marks setup complete */
+  const setupComplete = useCallback(() => {
+    setConfig(prev => ({
+      ...prev,
+      isSetupComplete: true,
+      isLoggedIn: false,
+    }));
+  }, []);
+
+  /** Logout: clear token and reset auth state */
+  const logout = useCallback(() => {
+    clearToken();
+    setConfig(prev => ({
+      ...prev,
+      isLoggedIn: false,
+      userName: '',
+      userEmail: '',
+      userRole: '',
+    }));
+  }, []);
+
+  /** Generic config updater (for legacy use in SetupPage preview) */
   const updateConfig = useCallback((updates) => {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
   return (
-    <AppContext.Provider value={{ config, updateConfig }}>
+    <AppContext.Provider value={{ config, updateConfig, loginSuccess, setupComplete, logout }}>
       {children}
     </AppContext.Provider>
   );
@@ -71,3 +203,27 @@ export function useAppConfig() {
 }
 
 export default AppContext;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function mapInstitution(inst) {
+  if (!inst) return {};
+  return {
+    institutionName: inst.name || '',
+    shortCode: inst.shortcode || '',
+    tagline: inst.tagline || '',
+    country: inst.country || '',
+    timezone: inst.timezone || '',
+    logoUrl: inst.logo_url || '',
+    accentColor: inst.accent_color || '#F59E0B',
+    academicYear: inst.admin_email ? '' : '', // comes from academic_year model separately
+  };
+}
+
+function getSaved() {
+  try {
+    const saved = localStorage.getItem('sas_config');
+    if (saved) return JSON.parse(saved);
+  } catch { /* ignore */ }
+  return {};
+}

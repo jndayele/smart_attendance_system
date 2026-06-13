@@ -1,31 +1,54 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
-import { GraduationCap, Eye, EyeOff } from 'lucide-react';
+import { authAPI, institutionAPI } from '@/api/api';
+import { GraduationCap, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { config, updateConfig } = useAppConfig();
+  const { config, loginSuccess } = useAppConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     if (!email || !password) { setError('Please fill in all fields.'); return; }
     setLoading(true);
-    setTimeout(() => {
-      if (email.toLowerCase() === config.adminEmail.toLowerCase()) {
-        updateConfig({ isLoggedIn: true });
-        navigate('/dashboard');
+
+    try {
+      // 1. Authenticate and get JWT
+      const loginData = await authAPI.login(email.trim().toLowerCase(), password);
+      const token = loginData.access_token;
+
+      // 2. Fetch user profile and institution data in parallel
+      //    We need to temporarily set the token so requests include auth header
+      localStorage.setItem('sas_token', token);
+      const [meData, instData] = await Promise.all([
+        authAPI.me(),
+        institutionAPI.get(),
+      ]);
+
+      // 3. Store everything in context and redirect
+      loginSuccess(token, meData, instData);
+      navigate('/dashboard');
+    } catch (err) {
+      // Show friendly message for common error codes
+      if (err.status === 401) {
+        setError('Incorrect email or password. Please try again.');
+      } else if (err.status === 423) {
+        setError(err.message || 'Account temporarily locked. Please try again later.');
+      } else if (err.status === 403) {
+        setError('Your account has been suspended. Contact your administrator.');
       } else {
-        setError('Invalid email address. Please try again.');
+        setError(err.message || 'Login failed. Please try again.');
       }
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   return (
@@ -65,6 +88,8 @@ export default function LoginPage() {
                 style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
                 onFocus={e => e.target.style.borderColor = 'var(--accent-primary)'}
                 onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
+                autoComplete="email"
+                disabled={loading}
               />
             </div>
             <div>
@@ -79,17 +104,31 @@ export default function LoginPage() {
                   style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
                   onFocus={e => e.target.style.borderColor = 'var(--accent-primary)'}
                   onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
+                  autoComplete="current-password"
+                  disabled={loading}
                 />
-                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--text-muted)' }}
+                  tabIndex={-1}
+                >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            {error && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>}
+            {error && (
+              <p className="text-xs px-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
+            )}
 
             <div className="text-right">
-              <Link to="/forgot-password" className="text-xs font-medium hover:underline" style={{ color: 'var(--accent-primary)' }}>
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium hover:underline"
+                style={{ color: 'var(--accent-primary)' }}
+              >
                 Forgot password?
               </Link>
             </div>
@@ -97,10 +136,14 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
+              className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? (
+                <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
         </div>

@@ -7,9 +7,14 @@ export default function TopHeader({ title, breadcrumbs = [] }) {
   const { config } = useAppConfig();
   const navigate = useNavigate();
 
-  const initials = config.adminName
-    ? config.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'AD';
+  // Derive initials from real user name (set in AppContext after login via /auth/me)
+  const displayName = config.userName || 'Admin';
+  const initials = displayName
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <header
@@ -56,8 +61,10 @@ export default function TopHeader({ title, breadcrumbs = [] }) {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--accent-red)' }} />
         </button>
 
+        {/* Profile avatar — real initials from /auth/me */}
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
+          title={displayName}
           style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
         >
           {initials}

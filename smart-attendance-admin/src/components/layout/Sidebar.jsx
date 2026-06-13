@@ -45,21 +45,26 @@ const navSections = [
 ];
 
 export default function Sidebar() {
-  const { config, updateConfig } = useAppConfig();
+  const { config, logout } = useAppConfig();
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    updateConfig({ isLoggedIn: false });
+    logout();          // clears JWT from localStorage + resets context state
     navigate('/login');
   };
 
-  const initials = config.adminName
-    ? config.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'AD';
+  // Derive initials from the real user name (populated after login via /auth/me)
+  const displayName = config.userName || 'Admin';
+  const initials = displayName
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-60 flex flex-col" style={{ backgroundColor: 'var(--bg-surface)', borderRight: '1px solid var(--border-subtle)' }}>
-      {/* Logo area */}
+      {/* Logo area — school logo + short code */}
       <div className="px-5 py-5 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         {config.logoUrl ? (
           <img src={config.logoUrl} alt="Logo" className="w-9 h-9 rounded-lg object-cover" />
@@ -108,7 +113,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Admin card */}
+      {/* Admin profile card — shows real name from /auth/me */}
       <div className="px-4 py-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
         <div className="flex items-center gap-3">
           <div
@@ -119,7 +124,7 @@ export default function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-              {config.adminName || 'Admin'}
+              {displayName}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>System Admin</p>
           </div>

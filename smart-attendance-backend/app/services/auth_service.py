@@ -69,8 +69,8 @@ class AuthService:
         user = result.scalars().first()
         if user:
             token = create_reset_token(user.email)
-            user.reset_token = token
-            user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+            user.password_reset_token = token
+            user.password_reset_expiry = datetime.utcnow() + timedelta(hours=1)
             await db.commit()
             # Send email here
             from app.services.email_service import send_password_reset_email
@@ -86,8 +86,9 @@ class AuthService:
                 stu = res.scalars().first()
                 if stu: name = stu.name
                 
+            reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
             import asyncio
-            asyncio.create_task(send_password_reset_email(user.email, name, token))
+            asyncio.create_task(send_password_reset_email(user.email, name, reset_url))
 
     @staticmethod
     async def reset_password(db: AsyncSession, token: str, new_password: str) -> None:
@@ -99,16 +100,16 @@ class AuthService:
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-        result = await db.execute(select(User).filter(User.email == email, User.reset_token == token))
+        result = await db.execute(select(User).filter(User.email == email, User.password_reset_token == token))
         user = result.scalars().first()
-        if not user or not user.reset_token_expiry or user.reset_token_expiry < datetime.utcnow():
+        if not user or not user.password_reset_expiry or user.password_reset_expiry < datetime.utcnow():
             raise HTTPException(status_code=404, detail="Invalid or expired token")
 
         user.password_hash = hash_password(new_password)
         user.failed_attempts = 0
         user.locked_until = None
-        user.reset_token = None
-        user.reset_token_expiry = None
+        user.password_reset_token = None
+        user.password_reset_expiry = None
         await db.commit()
 
     @staticmethod
