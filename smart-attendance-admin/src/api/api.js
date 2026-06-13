@@ -167,3 +167,167 @@ export const institutionAPI = {
     return request('/admin/institution/', { method: 'GET' }, true);
   },
 };
+
+// ─── Admin API ────────────────────────────────────────────────────────────────
+
+export const departmentsAPI = {
+  /**
+   * List all departments
+   * GET /admin/departments/
+   * Returns: { departments, total }
+   */
+  list() {
+    return request('/admin/departments/', { method: 'GET' }, true);
+  },
+
+  /**
+   * Create a new department
+   * POST /admin/departments/
+   */
+  create(data) {
+    return request('/admin/departments/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Update a department
+   * PATCH /admin/departments/{id}
+   */
+  update(id, data) {
+    return request(`/admin/departments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Delete a department
+   * DELETE /admin/departments/{id}
+   */
+  delete(id) {
+    return request(`/admin/departments/${id}`, { method: 'DELETE' }, true);
+  },
+
+  /**
+   * Activate a department
+   * PATCH /admin/departments/{id}/activate
+   */
+  activate(id) {
+    return request(`/admin/departments/${id}/activate`, { method: 'PATCH' }, true);
+  },
+
+  /**
+   * Deactivate a department
+   * PATCH /admin/departments/{id}/deactivate
+   */
+  deactivate(id) {
+    return request(`/admin/departments/${id}/deactivate`, { method: 'PATCH' }, true);
+  },
+};
+
+export const programmesAPI = {
+  /**
+   * List all programmes
+   * GET /admin/programmes/
+   * Returns: { programmes, total }
+   */
+  list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/admin/programmes/?${qs}` : '/admin/programmes/';
+    return request(url, { method: 'GET' }, true);
+  },
+
+  /**
+   * Create a new programme
+   * POST /admin/programmes/
+   */
+  create(data) {
+    return request('/admin/programmes/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Update a programme
+   * PATCH /admin/programmes/{id}
+   */
+  update(id, data) {
+    return request(`/admin/programmes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Delete a programme
+   * DELETE /admin/programmes/{id}
+   */
+  delete(id) {
+    return request(`/admin/programmes/${id}`, { method: 'DELETE' }, true);
+  },
+
+  /**
+   * Deactivate a programme
+   * PATCH /admin/programmes/{id}/deactivate
+   */
+  deactivate(id) {
+    return request(`/admin/programmes/${id}/deactivate`, { method: 'PATCH' }, true);
+  },
+};
+
+export const coursesAPI = {
+  /**
+   * List all courses
+   * GET /admin/courses/
+   */
+  list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/admin/courses/?${qs}` : '/admin/courses/';
+    return request(url, { method: 'GET' }, true);
+  },
+
+  /**
+   * Create a new course
+   * POST /admin/courses/
+   */
+  create(data) {
+    return request('/admin/courses/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Update a course
+   * PATCH /admin/courses/{id}
+   */
+  update(id, data) {
+    return request(`/admin/courses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Delete a course
+   * DELETE /admin/courses/{id}
+   */
+  delete(id) {
+    return request(`/admin/courses/${id}`, { method: 'DELETE' }, true);
+  },
+};
+
+export const lecturersAPI = {
+  /**
+   * List all lecturers
+   * GET /admin/lecturers/
+   */
+  list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/admin/lecturers/?${qs}` : '/admin/lecturers/';
+    return request(url, { method: 'GET' }, true);
+  },
+};

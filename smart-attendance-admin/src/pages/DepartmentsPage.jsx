@@ -1,52 +1,92 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
 import SlideOver from '@/components/ui-custom/SlideOver';
 import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
-import { Plus, Pencil, Trash2, Eye, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, Building2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
-const initialDepts = [
-  { id: 1, name: 'Computer Science', code: 'DCS', faculty: 'Faculty of Computing', programmes: 3, students: 412, status: 'Active' },
-  { id: 2, name: 'Electrical Engineering', code: 'DEE', faculty: 'Faculty of Engineering', programmes: 2, students: 289, status: 'Active' },
-  { id: 3, name: 'Civil Engineering', code: 'DCE', faculty: 'Faculty of Engineering', programmes: 2, students: 245, status: 'Active' },
-  { id: 4, name: 'Business Administration', code: 'DBA', faculty: 'Faculty of Business', programmes: 1, students: 198, status: 'Active' },
-  { id: 5, name: 'Pharmacy', code: 'DPH', faculty: 'Faculty of Health Sciences', programmes: 1, students: 103, status: 'Inactive' },
-];
+import { departmentsAPI } from '@/api/api';
 
 const emptyForm = { name: '', code: '', faculty: '', status: 'Active' };
 
 export default function DepartmentsPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const [depts, setDepts] = useState(initialDepts);
+  
+  const [depts, setDepts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  
   const [slideOpen, setSlideOpen] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [deleteModal, setDeleteModal] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
+
+  useEffect(() => {
+    fetchDepts();
+  }, []);
+
+  const fetchDepts = async () => {
+    try {
+      setIsLoading(true);
+      const data = await departmentsAPI.list();
+      // Map backend fields to frontend state
+      const mapped = data.departments.map(d => ({
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        faculty: d.faculty || '',
+        programmes: d.programme_count || 0,
+        students: d.student_count || 0,
+        status: d.is_active ? 'Active' : 'Inactive'
+      }));
+      setDepts(mapped);
+    } catch (err) {
+      addToast(err.message || 'Failed to fetch departments', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const openAdd = () => { setEditItem(null); setForm(emptyForm); setErrors({}); setSlideOpen(true); };
   const openEdit = (d) => { setEditItem(d); setForm({ name: d.name, code: d.code, faculty: d.faculty, status: d.status }); setErrors({}); setSlideOpen(true); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const e = {};
     if (!form.name.trim()) e.name = 'Required';
     if (!form.code.trim()) e.code = 'Required';
-    else if (form.code.length > 5) e.code = 'Max 5 characters';
+    else if (form.code.length > 10) e.code = 'Max 10 characters';
     setErrors(e);
     if (Object.keys(e).length) return;
 
-    if (editItem) {
-      setDepts(prev => prev.map(d => d.id === editItem.id ? { ...d, ...form, code: form.code.toUpperCase() } : d));
-      addToast('Department updated successfully', 'success');
-    } else {
-      setDepts(prev => [...prev, { id: Date.now(), ...form, code: form.code.toUpperCase(), programmes: 0, students: 0 }]);
-      addToast('Department created successfully', 'success');
+    setIsSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        code: form.code.trim().toUpperCase(),
+        faculty: form.faculty.trim() || null,
+        is_active: form.status === 'Active'
+      };
+
+      if (editItem) {
+        await departmentsAPI.update(editItem.id, payload);
+        addToast('Department updated successfully', 'success');
+      } else {
+        await departmentsAPI.create(payload);
+        addToast('Department created successfully', 'success');
+      }
+      setSlideOpen(false);
+      fetchDepts(); // Refresh list
+    } catch (err) {
+      addToast(err.message || 'Failed to save department', 'error');
+    } finally {
+      setIsSaving(false);
     }
-    setSlideOpen(false);
   };
 
   const handleDelete = (d) => {
@@ -54,9 +94,34 @@ export default function DepartmentsPage() {
     setDeleteModal(d);
   };
 
-  const toggleStatus = (d) => {
-    setDepts(prev => prev.map(x => x.id === d.id ? { ...x, status: x.status === 'Active' ? 'Inactive' : 'Active' } : x));
-    addToast(`Department ${d.status === 'Active' ? 'deactivated' : 'activated'}`, 'success');
+  const confirmDelete = async () => {
+    if (!deleteModal) return;
+    setIsDeleting(true);
+    try {
+      await departmentsAPI.delete(deleteModal.id);
+      addToast('Department deleted', 'success');
+      setDeleteModal(null);
+      fetchDepts();
+    } catch (err) {
+      addToast(err.message || 'Failed to delete department', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const toggleStatus = async (d) => {
+    try {
+      if (d.status === 'Active') {
+        await departmentsAPI.deactivate(d.id);
+        addToast('Department deactivated', 'success');
+      } else {
+        await departmentsAPI.activate(d.id);
+        addToast('Department activated', 'success');
+      }
+      fetchDepts();
+    } catch (err) {
+      addToast(err.message || 'Failed to toggle status', 'error');
+    }
   };
 
   const handleSort = (col) => {
@@ -90,7 +155,12 @@ export default function DepartmentsPage() {
           </button>
         </div>
 
-        {depts.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={48} className="animate-spin mb-4" style={{ color: 'var(--accent-primary)' }} />
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Loading departments...</p>
+          </div>
+        ) : depts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Building2 size={48} style={{ color: 'var(--text-muted)' }} className="mb-4" />
             <p className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>No departments yet</p>
@@ -147,7 +217,7 @@ export default function DepartmentsPage() {
                         <button onClick={() => toggleStatus(d)} className="p-1.5 rounded hover:bg-white/5 text-xs" style={{ color: 'var(--accent-primary)' }} title="Toggle status">
                           {d.status === 'Active' ? 'Deactivate' : 'Activate'}
                         </button>
-                        <button onClick={() => navigate(`/programmes?dept=${d.code}`)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-secondary)' }} title="View Programmes"><Eye size={14} /></button>
+                        <button onClick={() => navigate(`/programmes?dept=${d.id}`)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-secondary)' }} title="View Programmes"><Eye size={14} /></button>
                         <button onClick={() => handleDelete(d)} disabled={d.programmes > 0} className="p-1.5 rounded hover:bg-white/5 disabled:opacity-30" style={{ color: 'var(--accent-red)' }} title="Delete"><Trash2 size={14} /></button>
                       </div>
                     </td>
@@ -162,7 +232,7 @@ export default function DepartmentsPage() {
       <SlideOver open={slideOpen} onClose={() => setSlideOpen(false)} title={editItem ? 'Edit Department' : 'Add Department'}>
         <div className="space-y-4">
           <FieldInput label="Department Name" value={form.name} onChange={v => { setForm(p => ({ ...p, name: v })); setErrors(p => ({ ...p, name: '' })); }} error={errors.name} required />
-          <FieldInput label="Department Code" value={form.code} onChange={v => { setForm(p => ({ ...p, code: v.toUpperCase() })); setErrors(p => ({ ...p, code: '' })); }} error={errors.code} helper="Max 5 characters, auto-uppercase" required />
+          <FieldInput label="Department Code" value={form.code} onChange={v => { setForm(p => ({ ...p, code: v.toUpperCase() })); setErrors(p => ({ ...p, code: '' })); }} error={errors.code} helper="Max 10 characters, auto-uppercase" required />
           <FieldInput label="Faculty / School" value={form.faculty} onChange={v => setForm(p => ({ ...p, faculty: v }))} />
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Status</label>
@@ -178,14 +248,23 @@ export default function DepartmentsPage() {
           </div>
         </div>
         <div className="flex gap-3 mt-8 pt-6" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-          <button onClick={() => setSlideOpen(false)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium" style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-primary)' }}>Cancel</button>
-          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+          <button onClick={() => setSlideOpen(false)} disabled={isSaving} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50" style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-primary)' }}>Cancel</button>
+          <button onClick={handleSave} disabled={isSaving} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2" style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+            {isSaving && <Loader2 size={16} className="animate-spin" />}
             {editItem ? 'Save Changes' : 'Save Department'}
           </button>
         </div>
       </SlideOver>
 
-      <ConfirmModal open={!!deleteModal} onClose={() => setDeleteModal(null)} onConfirm={() => { setDepts(p => p.filter(d => d.id !== deleteModal.id)); addToast('Department deleted', 'success'); setDeleteModal(null); }} title="Delete Department" message={`Are you sure you want to delete "${deleteModal?.name}"? This action cannot be undone.`} confirmText="Delete" danger />
+      <ConfirmModal 
+        open={!!deleteModal} 
+        onClose={() => setDeleteModal(null)} 
+        onConfirm={confirmDelete} 
+        title="Delete Department" 
+        message={`Are you sure you want to delete "${deleteModal?.name}"? This action cannot be undone.`} 
+        confirmText={isDeleting ? 'Deleting...' : 'Delete'} 
+        danger 
+      />
     </div>
   );
 }
