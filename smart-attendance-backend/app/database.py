@@ -5,11 +5,19 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Engine configuration for Supabase with SSL required
+from sqlalchemy.pool import AsyncAdaptedQueuePool
+
+# Engine configuration for Supabase with SSL required and connection pooling
 engine = create_async_engine(
     settings.DATABASE_URL,
     connect_args={"ssl": "require"},
     echo=settings.DEBUG,
+    poolclass=AsyncAdaptedQueuePool,
+    pool_size=20,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True
 )
 
 # Async session factory

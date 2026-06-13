@@ -211,6 +211,35 @@ class FaceService:
         img = FaceService._bytes_to_image(live_image_bytes)
         
         try:
+            if settings.LIVENESS_DETECTION_ENABLED:
+                try:
+                    face_objs = DeepFace.extract_faces(img_path=img, enforce_detection=True, anti_spoofing=True)
+                    if len(face_objs) == 0:
+                        raise ValueError("No face detected in the live image.")
+                    is_real = face_objs[0].get("is_real")
+                    if is_real is False:
+                        return {
+                            "verified": False,
+                            "distance": 1.0,
+                            "confidence": 0.0,
+                            "threshold_distance": 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0),
+                            "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD,
+                            "liveness_failed": True
+                        }
+                except ValueError as e:
+                    if "Face could not be detected" in str(e):
+                        raise ValueError("No face detected in the live image.")
+                    if "spoof" in str(e).lower():
+                        return {
+                            "verified": False,
+                            "distance": 1.0,
+                            "confidence": 0.0,
+                            "threshold_distance": 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0),
+                            "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD,
+                            "liveness_failed": True
+                        }
+                    raise e
+                    
             results = DeepFace.represent(
                 img_path=img,
                 model_name=settings.FACE_MODEL,

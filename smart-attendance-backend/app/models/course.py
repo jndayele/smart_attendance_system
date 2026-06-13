@@ -26,3 +26,4 @@ class Course(Base):
     programme = relationship("Programme")
     semester = relationship("Semester")
     lecturer = relationship("Lecturer", back_populates="courses")
+    schedules = relationship("ClassSchedule", back_populates="course", cascade="all, delete-orphan")

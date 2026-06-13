@@ -122,6 +122,7 @@ class AttendanceMarkResponse(BaseModel):
     session_label: Optional[str] = None
     updated_attendance_pct: Optional[float] = None
     updated_status: Optional[str] = None
+    liveness_failed: Optional[bool] = None
 
 
 class SessionCodeAttemptResponse(BaseModel):

@@ -72,6 +72,60 @@ class ReportService:
         return buffer.getvalue()
 
     @staticmethod
+    def generate_department_attendance_pdf(department, data: Dict, academic_year: str, semester: str) -> bytes:
+        buffer = io.BytesIO()
+        doc = ReportService._create_pdf_doc(buffer)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        elements.append(Paragraph(f"<b>Department: {department.name} ({department.code})</b>", styles['Title']))
+        elements.append(Paragraph(f"Department Attendance Report", styles['Heading2']))
+        elements.append(Paragraph(f"Academic Year: {academic_year} | Semester: {semester}", styles['Normal']))
+        elements.append(Paragraph(f"Generated on: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
+        elements.append(Spacer(1, 20))
+
+        # Summary
+        summary_data = [
+            ["Metric", "Value"],
+            ["Average Attendance", f"{data.get('avg_attendance', 0):.1f}%"]
+        ]
+        t = Table(summary_data, colWidths=[200, 100])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 20))
+
+        for prog in data.get("programmes", []):
+            elements.append(Paragraph(f"Programme: {prog['name']} ({prog['code']})", styles['Heading3']))
+            c_data = [["Course Code", "Course Title", "Avg Attendance %"]]
+            for c in prog.get("courses", []):
+                c_data.append([c["code"], c["title"], f"{c['avg_pct']:.1f}%"])
+            
+            if len(c_data) > 1:
+                t2 = Table(c_data, colWidths=[100, 250, 100])
+                t2.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.steelblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                elements.append(t2)
+            else:
+                elements.append(Paragraph("No courses found.", styles['Normal']))
+            elements.append(Spacer(1, 15))
+
+        doc.build(elements)
+        return buffer.getvalue()
+
+    @staticmethod
     def generate_course_attendance_pdf(course: Course, sessions: List, students: List, attendance_records: List) -> bytes:
         buffer = io.BytesIO()
         doc = ReportService._create_pdf_doc(buffer, "landscape")

@@ -139,6 +139,87 @@ async def report_institution_excel(db: AsyncSession = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# DEPARTMENT REPORTS
+# ---------------------------------------------------------------------------
+
+async def build_department_data(department_id: str, db: AsyncSession) -> dict:
+    dept = await db.get(Department, UUID(department_id))
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    progs_res = await db.execute(select(Programme).where(Programme.department_id == dept.id, Programme.is_active == True))
+    programmes = progs_res.scalars().all()
+
+    prog_data = []
+    global_pres = 0
+    global_tot = 0
+
+    for p in programmes:
+        courses_res = await db.execute(select(Course).where(Course.programme_id == p.id, Course.is_active == True))
+        courses = courses_res.scalars().all()
+        
+        c_data = []
+        for c in courses:
+            sess_ids_res = await db.execute(select(Session.id).where(Session.course_id == c.id, Session.is_locked == True))
+            sess_ids = [r[0] for r in sess_ids_res.all()]
+            
+            enr_res = await db.execute(select(func.count(StudentCourse.id)).where(StudentCourse.course_id == c.id, StudentCourse.is_active == True))
+            enrolled = enr_res.scalar() or 0
+            
+            expected_att = enrolled * len(sess_ids)
+            pres = 0
+            
+            if sess_ids:
+                pres_res = await db.execute(select(func.count(AttendanceRecord.id)).where(
+                    AttendanceRecord.session_id.in_(sess_ids),
+                    AttendanceRecord.status == "present"
+                ))
+                pres = pres_res.scalar() or 0
+                
+            global_pres += pres
+            global_tot += expected_att
+            
+            pct = (pres / expected_att * 100) if expected_att > 0 else 0.0
+            c_data.append({"title": c.title, "code": c.code, "avg_pct": pct})
+            
+        prog_data.append({"name": p.name, "code": p.code, "courses": c_data})
+        
+    avg_attendance = (global_pres / global_tot * 100) if global_tot > 0 else 0.0
+
+    return {
+        "department": dept,
+        "department_name": dept.name,
+        "department_code": dept.code,
+        "avg_attendance": avg_attendance,
+        "programmes": prog_data
+    }
+
+@router.get("/department/{department_id}")
+async def report_department_json(department_id: str, db: AsyncSession = Depends(get_db)):
+    data = await build_department_data(department_id, db)
+    return {"department_name": data["department_name"], "avg_attendance": data["avg_attendance"], "programmes": data["programmes"]}
+
+@router.get("/department/{department_id}/pdf")
+async def report_department_pdf(department_id: str, db: AsyncSession = Depends(get_db)):
+    data = await build_department_data(department_id, db)
+    pdf_bytes = ReportService.generate_department_attendance_pdf(data["department"], data, "Current Year", "Current Semester")
+    return StreamingResponse(
+        iter([pdf_bytes]), 
+        media_type="application/pdf", 
+        headers={"Content-Disposition": f'attachment; filename="department_{data["department_code"]}_attendance.pdf"'}
+    )
+
+@router.get("/department/{department_id}/excel")
+async def report_department_excel(department_id: str, db: AsyncSession = Depends(get_db)):
+    data = await build_department_data(department_id, db)
+    excel_bytes = ReportService.generate_department_attendance_excel(data["department"], data)
+    return StreamingResponse(
+        iter([excel_bytes]), 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        headers={"Content-Disposition": f'attachment; filename="department_{data["department_code"]}_attendance.xlsx"'}
+    )
+
+# ---------------------------------------------------------------------------
 # COURSE REPORTS
 # ---------------------------------------------------------------------------
 

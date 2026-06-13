@@ -234,6 +234,13 @@ async def mark_face(
         raise HTTPException(status_code=500, detail="Face verification failed. Please try again.")
 
     if not match_res["verified"]:
+        if match_res.get("liveness_failed"):
+            return AttendanceMarkResponse(
+                success=False,
+                status="liveness_failed",
+                message="Liveness check failed. Please ensure you are a real person in front of the camera.",
+                liveness_failed=True
+            )
         return AttendanceMarkResponse(
             success=False,
             status="face_failed",

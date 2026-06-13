@@ -263,7 +263,13 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         total_departments=d_cnt.scalar() or 0,
         sessions_today=sess_cnt.scalar() or 0,
         students_below_threshold=0,
-        recent_activity=activity
+        recent_activity=activity,
+        quick_actions=[
+            {"label": "Add Lecturer", "action": "add_lecturer", "path": "/admin/lecturers/new"},
+            {"label": "Add Student", "action": "add_student", "path": "/admin/students/new"},
+            {"label": "Create Course", "action": "create_course", "path": "/admin/courses/new"},
+            {"label": "View Reports", "action": "view_reports", "path": "/admin/reports"}
+        ]
     )
 
 @router.get("/dashboard/charts")

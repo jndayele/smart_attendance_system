@@ -76,6 +76,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    if process_time > 5.0:
+        logger.warning(f"Slow request: {request.method} {request.url.path} took {process_time:.2f}s")
+    return response
+
 # CORS Middleware
 origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
 

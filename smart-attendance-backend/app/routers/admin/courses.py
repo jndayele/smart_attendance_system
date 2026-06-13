@@ -156,6 +156,14 @@ async def create_course(
     if code_check.scalars().first():
         raise HTTPException(status_code=409, detail="Course code already exists")
     
+    if data.threshold_pct is None:
+        from app.models.institution import Institution
+        from app.config import get_settings
+        settings = get_settings()
+        inst_res = await db.execute(select(Institution).limit(1))
+        inst = inst_res.scalars().first()
+        data.threshold_pct = inst.settings_data.get("attendance_default_threshold", settings.ATTENDANCE_DEFAULT_THRESHOLD) if inst and inst.settings_data else settings.ATTENDANCE_DEFAULT_THRESHOLD
+
     new_course = Course(**data.model_dump())
     db.add(new_course)
     await db.commit()

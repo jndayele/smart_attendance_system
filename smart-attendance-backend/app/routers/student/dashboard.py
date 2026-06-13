@@ -193,8 +193,35 @@ async def get_dashboard(
     sem_name = f"Semester {sem.number}" if sem else None
 
     # Upcoming Schedule
-    # (Assuming no explicit schedule table, return a basic projection of courses based on their semester/level)
+    from app.models.class_schedule import ClassSchedule
     upcoming_schedule = []
+    now = datetime.utcnow()
+    current_day = now.weekday()
+    
+    if course_ids:
+        sched_res = await db.execute(select(ClassSchedule).where(ClassSchedule.course_id.in_(course_ids)))
+        schedules = sched_res.scalars().all()
+        
+        # Build mapping from course_id to course info
+        course_info_map = {c.id: (c.title, c.code, l_name) for c, _, l_name in enrolled_data}
+        
+        for sched in schedules:
+            if sched.course_id in course_info_map:
+                c_title, c_code, l_name = course_info_map[sched.course_id]
+                day_diff = sched.day_of_week - current_day
+                if day_diff < 0: day_diff += 7
+                
+                upcoming_schedule.append(UpcomingClass(
+                    course_title=c_title,
+                    course_code=c_code,
+                    lecturer_name=l_name,
+                    time_until=f"In {day_diff} days at {sched.start_time.strftime('%H:%M')}",
+                    scheduled_time=sched.start_time.strftime('%H:%M'),
+                    room=sched.room or "TBA"
+                ))
+    
+    # Sort by closest day
+    upcoming_schedule.sort(key=lambda x: x.time_until)
 
     stats = StudentDashboardStats(
         total_courses=len(course_cards),

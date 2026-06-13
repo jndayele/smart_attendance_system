@@ -11,7 +11,7 @@ class CourseCreate(BaseModel):
     level: int
     semester_number: int = Field(..., ge=1, le=2)
     credit_hours: int = Field(3, ge=1, le=6)
-    threshold_pct: int = Field(75, ge=50, le=100)
+    threshold_pct: Optional[int] = Field(None, ge=50, le=100)
     lecturer_id: Optional[UUID] = None
 
     @field_validator('code')
@@ -78,3 +78,17 @@ class CourseCloneRequest(BaseModel):
 class CourseListResponse(BaseModel):
     courses: List[CourseResponse]
     total: int
+
+from datetime import time
+
+class ClassScheduleCreate(BaseModel):
+    day_of_week: int = Field(..., ge=0, le=6)
+    start_time: time
+    end_time: time
+    room: Optional[str] = None
+
+class ClassScheduleResponse(ClassScheduleCreate):
+    id: UUID
+    course_id: UUID
+    class Config:
+        from_attributes = True

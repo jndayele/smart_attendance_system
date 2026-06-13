@@ -150,11 +150,12 @@ async def get_course_data(
         att_res = await db.execute(
             select(
                 func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "present"),
+                func.count(AttendanceRecord.id).filter(AttendanceRecord.status == "absent"),
                 func.count(AttendanceRecord.id).filter(AttendanceRecord.method == "face"),
                 func.count(AttendanceRecord.id).filter(AttendanceRecord.method == "qr")
             ).filter(AttendanceRecord.session_id == s.id)
         )
-        pres, face_c, qr_c = att_res.first()
+        pres, absent, face_c, qr_c = att_res.first()
         tot_face += face_c
         tot_qr += qr_c
         
@@ -166,6 +167,21 @@ async def get_course_data(
             "present": pres,
             "total": len(detail.enrolled_students)
         })
+        
+        session_summaries.append(SessionSummary(
+            session_id=s.id,
+            course_title=c.title,
+            course_code=c.code,
+            label=s.label,
+            session_date=s.session_date,
+            total_enrolled=len(detail.enrolled_students),
+            present_count=pres,
+            absent_count=absent,
+            attendance_pct=pct,
+            face_scan_count=face_c,
+            qr_scan_count=qr_c,
+            duration_minutes=None
+        ))
 
     for st in detail.enrolled_students:
         if st.attendance_pct >= c.threshold_pct:
@@ -177,22 +193,7 @@ async def get_course_data(
 
     # Fake SessionSummary list for this response
     # We will just map session to simple dict to represent SessionSummary
-    session_summaries = []
-    for s in sessions:
-        session_summaries.append(SessionSummary(
-            session_id=s.id,
-            course_title=c.title,
-            course_code=c.code,
-            label=s.label,
-            session_date=s.session_date,
-            total_enrolled=len(detail.enrolled_students),
-            present_count=0, # skipped
-            absent_count=0,  # skipped
-            attendance_pct=0.0, # skipped
-            face_scan_count=0, # skipped
-            qr_scan_count=0, # skipped
-            duration_minutes=None
-        ))
+    # session_summaries built in loop above
 
     c_dict = c.__dict__.copy()
     c_dict.update({
@@ -459,3 +460,16 @@ async def export_reports(
 ):
     # This could export an aggregated Excel of all courses
     raise HTTPException(status_code=400, detail="Use /lecturer/reports/course/{course_id}/excel to export specific course data.")
+
+@router.get("/course/{course_id}/chart-data", summary="Course Attendance Charts")
+async def get_course_chart_data(
+    course_id: str,
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    c = await db.scalar(select(Course).filter(Course.id == course_id))
+    if not c:
+        raise HTTPException(status_code=404, detail="Course not found")
+        
+    data = await get_course_data(course_id, current_user, db)
+    return data["charts"]

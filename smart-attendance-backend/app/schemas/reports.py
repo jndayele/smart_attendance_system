@@ -29,6 +29,7 @@ class DashboardStatsResponse(BaseModel):
     sessions_today: int
     students_below_threshold: int
     recent_activity: List[ActivityItem]
+    quick_actions: List[dict] = []
 
 class DefaulterResponse(BaseModel):
     student_id: UUID
