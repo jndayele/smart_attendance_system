@@ -84,6 +84,8 @@ async def list_courses(
     search: str = None,
     programme_id: str = None,
     level: int = None,
+    semester_id: str = None,
+    semester_number: int = None,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
@@ -102,6 +104,10 @@ async def list_courses(
         query = query.filter(Course.programme_id == programme_id)
     if level:
         query = query.filter(Course.level == level)
+    if semester_id:
+        query = query.filter(Course.semester_id == semester_id)
+    if semester_number is not None:
+        query = query.filter(Course.semester_number == semester_number)
         
     total_res = await db.execute(select(func.count(Course.id)))
     total = total_res.scalar() or 0

@@ -72,8 +72,6 @@ export default function SetupPage() {
     accentColor: '#F59E0B',
     adminName: '',
     adminEmail: '',
-    academicYear: '',
-    currentSemester: 'Semester 1',
   });
 
   const updateField = (key, value) => {
@@ -94,12 +92,6 @@ export default function SetupPage() {
       if (!form.adminName.trim()) e.adminName = 'Required';
       if (!form.adminEmail.trim()) e.adminEmail = 'Required';
       else if (!/\S+@\S+\.\S+/.test(form.adminEmail)) e.adminEmail = 'Invalid email';
-      if (!form.academicYear.trim()) e.academicYear = 'Required';
-      else {
-        const match = form.academicYear.match(/^(\d{4})\/(\d{4})$/);
-        if (!match) e.academicYear = 'Format: YYYY/YYYY';
-        else if (parseInt(match[2]) !== parseInt(match[1]) + 1) e.academicYear = 'Second year must equal first + 1';
-      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -121,12 +113,10 @@ export default function SetupPage() {
       formData.append('shortcode', form.shortCode.trim().toUpperCase());
       formData.append('tagline', form.tagline.trim());
       formData.append('country', form.country.trim());
-      formData.append('timezone', form.timezone);           // raw tz identifier
+      formData.append('timezone', form.timezone);
       formData.append('accent_color', form.accentColor);
       formData.append('admin_name', form.adminName.trim());
       formData.append('admin_email', form.adminEmail.trim().toLowerCase());
-      formData.append('academic_year', form.academicYear.trim());
-      formData.append('current_semester', form.currentSemester);
 
       // Attach logo file if selected
       if (logoFileRef.current) {
@@ -346,23 +336,6 @@ export default function SetupPage() {
                 <InputField label="Full name" name="adminName" placeholder="e.g. System Admin" half required form={form} errors={errors} updateField={updateField} />
                 <InputField label="Email address" name="adminEmail" placeholder="e.g. admin@university.edu" half required form={form} errors={errors} updateField={updateField} />
               </div>
-              <div className="flex gap-4">
-                <InputField label="Active academic year" name="academicYear" placeholder="e.g. 2024/2025" helper="Format: YYYY/YYYY · second year must equal first + 1" half required form={form} errors={errors} updateField={updateField} />
-                <div className="flex-1">
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                    Current semester <span style={{ color: 'var(--accent-red)' }}>*</span>
-                  </label>
-                  <select
-                    value={form.currentSemester}
-                    onChange={e => updateField('currentSemester', e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-lg text-sm outline-none appearance-none"
-                    style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
-                  >
-                    <option>Semester 1</option>
-                    <option>Semester 2</option>
-                  </select>
-                </div>
-              </div>
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
                 <Info size={18} className="shrink-0 mt-0.5" style={{ color: '#F59E0B' }} />
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -392,8 +365,6 @@ export default function SetupPage() {
               <ReviewCard title="Administrator" onEdit={() => setStep(3)} items={[
                 ['Name', form.adminName],
                 ['Email', form.adminEmail],
-                ['Academic Year', form.academicYear],
-                ['Semester', form.currentSemester],
               ]} />
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
                 <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#F59E0B' }} />

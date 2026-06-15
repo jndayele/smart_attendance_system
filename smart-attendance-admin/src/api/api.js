@@ -331,3 +331,57 @@ export const lecturersAPI = {
     return request(url, { method: 'GET' }, true);
   },
 };
+
+export const academicYearsAPI = {
+  /** GET /admin/academic-years/ */
+  list() {
+    return request('/admin/academic-years/', { method: 'GET' }, true);
+  },
+
+  /** GET /admin/academic-years/active */
+  getActive() {
+    return request('/admin/academic-years/active', { method: 'GET' }, true);
+  },
+
+  /** POST /admin/academic-years/ */
+  create(data) {
+    return request('/admin/academic-years/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** POST /admin/academic-years/{yearId}/semesters */
+  createSemester(yearId, data) {
+    return request(`/admin/academic-years/${yearId}/semesters`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** PATCH /admin/academic-years/{yearId}/semesters/{semId} */
+  updateSemester(yearId, semId, data) {
+    return request(`/admin/academic-years/${yearId}/semesters/${semId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** POST /admin/academic-years/{yearId}/semesters/{semId}/close */
+  closeSemester(yearId, semId) {
+    return request(`/admin/academic-years/${yearId}/semesters/${semId}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'CONFIRM' }),
+    }, true);
+  },
+
+  /** DELETE /admin/academic-years/{yearId}/semesters/{semId} */
+  deleteSemester(yearId, semId) {
+    return request(`/admin/academic-years/${yearId}/semesters/${semId}`, { method: 'DELETE' }, true);
+  },
+
+  /** DELETE /admin/academic-years/{yearId} */
+  deleteYear(yearId) {
+    return request(`/admin/academic-years/${yearId}`, { method: 'DELETE' }, true);
+  },
+};

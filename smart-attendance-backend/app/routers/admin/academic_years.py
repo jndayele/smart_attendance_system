@@ -223,3 +223,16 @@ async def close_semester(year_id: str, sem_id: str, body: dict, db: AsyncSession
         admin.id, "semester_closed", "semester", sem.id, {"sessions_archived": sessions_archived}, None, db
     )
     return {"message": "Semester closed and archived", "sessions_archived": sessions_archived or 0}
+
+@router.delete("/{year_id}/semesters/{sem_id}")
+async def delete_semester(year_id: str, sem_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+    res = await db.execute(select(Semester).filter(Semester.id == sem_id))
+    sem = res.scalars().first()
+    if not sem:
+        raise HTTPException(status_code=404, detail="Semester not found")
+    if sem.is_closed:
+        raise HTTPException(status_code=409, detail="Cannot delete a closed semester. It has archived attendance data.")
+    await db.delete(sem)
+    await db.commit()
+    await NotificationService.log_audit_action(admin.id, "semester_deleted", "semester", sem.id, None, None, db)
+    return {"message": "Semester deleted"}

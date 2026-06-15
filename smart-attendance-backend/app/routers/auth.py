@@ -50,8 +50,8 @@ async def setup_institution(
     accent_color: str = Form(default='#F59E0B'),
     admin_name: str = Form(...),
     admin_email: str = Form(...),
-    academic_year: str = Form(...),
-    current_semester: str = Form(default='Semester 1'),
+    academic_year: Optional[str] = Form(default=None),
+    current_semester: Optional[str] = Form(default=None),
     logo: Optional[UploadFile] = File(default=None),
     db: AsyncSession = Depends(get_db)
 ):
@@ -63,20 +63,20 @@ async def setup_institution(
     if not (2 <= len(shortcode_clean) <= 20):
         raise HTTPException(status_code=422, detail="Shortcode must be between 2 and 20 characters.")
     
-    if not re.match(r'^\d{4}/\d{4}$', academic_year):
-        raise HTTPException(status_code=422, detail="Academic year must match YYYY/YYYY.")
-    
-    parts = academic_year.split('/')
-    if int(parts[1]) != int(parts[0]) + 1:
-        raise HTTPException(status_code=422, detail="Second year must be exactly one more than first year")
-    
+    if academic_year is not None:
+        if not re.match(r'^\d{4}/\d{4}$', academic_year):
+            raise HTTPException(status_code=422, detail="Academic year must match YYYY/YYYY.")
+        parts = academic_year.split('/')
+        if int(parts[1]) != int(parts[0]) + 1:
+            raise HTTPException(status_code=422, detail="Second year must be exactly one more than first year")
+
     if not re.match(r'^#[0-9A-Fa-f]{6}$', accent_color):
         raise HTTPException(status_code=422, detail="Must be a valid hex color e.g. #F59E0B")
-    
+
     if not re.match(r'^[^@]+@[^@]+\.[^@]+$', admin_email):
         raise HTTPException(status_code=422, detail="Invalid email format.")
-        
-    if current_semester not in ["Semester 1", "Semester 2"]:
+
+    if current_semester is not None and current_semester not in ["Semester 1", "Semester 2"]:
         raise HTTPException(status_code=422, detail="current_semester must be 'Semester 1' or 'Semester 2'")
 
     logo_url = None
@@ -121,21 +121,25 @@ async def setup_institution(
     db.add(admin_user)
     await db.flush()
 
-    acad_year = AcademicYear(
-        institution_id=institution.id,
-        year_label=academic_year,
-        is_active=True
-    )
-    db.add(acad_year)
-    await db.flush()
+    # Only create academic year/semester if provided during setup
+    if academic_year:
+        acad_year = AcademicYear(
+            institution_id=institution.id,
+            year_label=academic_year,
+            is_active=True
+        )
+        db.add(acad_year)
+        await db.flush()
 
-    semester = Semester(
-        academic_year_id=acad_year.id,
-        name=current_semester,
-        is_active=True,
-        is_closed=False
-    )
-    db.add(semester)
+        sem_name = current_semester or "Semester 1"
+        semester = Semester(
+            academic_year_id=acad_year.id,
+            name=sem_name,
+            is_active=True,
+            is_closed=False
+        )
+        db.add(semester)
+
     await db.commit()
     await db.refresh(institution)
 

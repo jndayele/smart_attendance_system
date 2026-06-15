@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
 import TopHeader from '@/components/layout/TopHeader';
@@ -6,9 +6,10 @@ import StatCard from '@/components/ui-custom/StatCards';
 import AttendanceTrendChart from '@/components/charts/AttendanceTrendChart';
 import PresentAbsentDonut from '@/components/charts/PresentAbsentDonut';
 import DeptBarChart from '@/components/charts/DeptBarChart';
+import { academicYearsAPI } from '@/api/api';
 import {
   Users, UserCheck, BookOpen, Building2, Clock, AlertTriangle,
-  Plus, BarChart3, UserPlus, FileText, Zap, CheckCircle
+  Plus, BarChart3, UserPlus, FileText, Zap, CheckCircle, Calendar, X
 } from 'lucide-react';
 import StatCards from '@/components/ui-custom/StatCards';
 
@@ -41,6 +42,23 @@ const quickActions = [
 export default function DashboardPage() {
   const { config } = useAppConfig();
   const navigate = useNavigate();
+  const [showAcadBanner, setShowAcadBanner] = useState(false);
+
+  useEffect(() => {
+    // Check if an academic year has been set up
+    const dismissed = sessionStorage.getItem('acad_banner_dismissed');
+    if (dismissed) return;
+    academicYearsAPI.list().then(res => {
+      if (!res.academic_years || res.academic_years.length === 0) {
+        setShowAcadBanner(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const dismissBanner = () => {
+    setShowAcadBanner(false);
+    sessionStorage.setItem('acad_banner_dismissed', '1');
+  };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -50,6 +68,32 @@ export default function DashboardPage() {
     <div className="flex flex-col h-full">
       <TopHeader title="Dashboard" breadcrumbs={['Home', 'Dashboard']} />
       <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: 'var(--bg-deep)' }}>
+
+        {/* Academic Year setup prompt banner */}
+        {showAcadBanner && (
+          <div className="rounded-xl p-4 mb-6 flex items-center justify-between gap-4" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <div className="flex items-center gap-3">
+              <Calendar size={20} style={{ color: '#F59E0B' }} className="shrink-0" />
+              <div>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>No Academic Year set up yet</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>Set up your academic year and semesters to unlock course creation and attendance tracking.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => navigate('/academic-years')}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ backgroundColor: '#F59E0B', color: '#000' }}
+              >
+                Set Up Now
+              </button>
+              <button onClick={dismissBanner} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-muted)' }}>
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>

@@ -4,15 +4,16 @@ import SlideOver from '@/components/ui-custom/SlideOver';
 import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
 import { Plus, Pencil, Trash2, BookOpen, Search, Info, Loader2 } from 'lucide-react';
-import { coursesAPI, programmesAPI, lecturersAPI } from '@/api/api';
+import { coursesAPI, programmesAPI, lecturersAPI, academicYearsAPI } from '@/api/api';
 
-const emptyForm = { title: '', code: '', programme_id: '', level: '100', semester_number: 1, credits: 3, lecturer_id: '', threshold: 75, status: 'Active' };
+const emptyForm = { title: '', code: '', programme_id: '', level: '100', semester_id: '', semester_number: 1, credits: 3, lecturer_id: '', threshold: 75, status: 'Active' };
 
 export default function CoursesPage() {
   const { addToast } = useToast();
   const [courses, setCourses] = useState([]);
   const [programmes, setProgrammes] = useState([]);
   const [lecturers, setLecturers] = useState([]);
+  const [allSemesters, setAllSemesters] = useState([]); // flat list: { id, name, yearLabel }
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -39,12 +40,21 @@ export default function CoursesPage() {
 
   const fetchPrerequisites = async () => {
     try {
-      const [progRes, lecRes] = await Promise.all([
+      const [progRes, lecRes, yearRes] = await Promise.all([
         programmesAPI.list(),
-        lecturersAPI.list()
+        lecturersAPI.list(),
+        academicYearsAPI.list(),
       ]);
       setProgrammes(progRes.programmes || []);
       setLecturers(lecRes.lecturers || []);
+      // Build flat list of all semesters across all years
+      const sems = [];
+      for (const yr of (yearRes.academic_years || [])) {
+        for (const s of (yr.semesters || [])) {
+          sems.push({ id: s.id, name: s.name, yearLabel: yr.year_label, number: s.is_active ? 1 : 2 });
+        }
+      }
+      setAllSemesters(sems);
     } catch (err) {
       addToast('Failed to load prerequisites', 'error');
     }
@@ -57,10 +67,11 @@ export default function CoursesPage() {
       if (search) params.search = search;
       if (fProg) params.programme_id = fProg;
       if (fLevel) params.level = parseInt(fLevel, 10);
+      if (fSem) params.semester_id = fSem; // send semester UUID to backend
       
       const data = await coursesAPI.list(params);
       
-      let items = data.courses.map(c => ({
+      const items = data.courses.map(c => ({
         id: c.id,
         title: c.title,
         code: c.code,
@@ -68,19 +79,17 @@ export default function CoursesPage() {
         programme: c.programme_code || c.programme_name,
         level: `L${c.level}`,
         levelRaw: c.level,
+        semester_id: c.semester_id,
         semester_number: c.semester_number,
-        semester: `Sem ${c.semester_number}`,
+        semester: c.semester_id
+          ? (allSemesters.find(s => s.id === c.semester_id)?.name || `Sem ${c.semester_number}`)
+          : `Sem ${c.semester_number}`,
         credits: c.credit_hours,
         lecturer_id: c.lecturer_id,
         lecturer: c.lecturer_name || 'Unassigned',
         threshold: c.threshold_pct,
         status: c.is_active ? 'Active' : 'Inactive'
       }));
-
-      // If there's a semester filter applied locally (since backend may not support it directly in list)
-      if (fSem) {
-        items = items.filter(c => c.semester_number === parseInt(fSem, 10));
-      }
 
       setCourses(items);
     } catch (err) {
@@ -101,7 +110,14 @@ export default function CoursesPage() {
     setEditItem(null); 
     const firstProg = programmes[0];
     const firstLevel = firstProg?.levels?.[0]?.toString() || '100';
-    setForm({ ...emptyForm, programme_id: firstProg?.id || '', level: firstLevel }); 
+    const firstSem = allSemesters[0];
+    setForm({ 
+      ...emptyForm, 
+      programme_id: firstProg?.id || '', 
+      level: firstLevel,
+      semester_id: firstSem?.id || '',
+      semester_number: 1,
+    }); 
     setErrors({}); 
     setSlideOpen(true); 
   };
@@ -113,6 +129,7 @@ export default function CoursesPage() {
       code: c.code, 
       programme_id: c.programme_id, 
       level: c.levelRaw.toString(), 
+      semester_id: c.semester_id || '',
       semester_number: c.semester_number, 
       credits: c.credits, 
       lecturer_id: c.lecturer_id || '', 
@@ -133,12 +150,14 @@ export default function CoursesPage() {
 
     setIsSaving(true);
     try {
+      const selectedSem = allSemesters.find(s => s.id === form.semester_id);
       const payload = {
         title: form.title.trim(),
         code: form.code.trim().toUpperCase(),
         programme_id: form.programme_id,
         level: parseInt(form.level, 10),
-        semester_number: form.semester_number,
+        semester_id: form.semester_id || null,
+        semester_number: selectedSem ? (allSemesters.indexOf(selectedSem) % 2) + 1 : form.semester_number,
         credit_hours: form.credits,
         threshold_pct: form.threshold,
         lecturer_id: form.lecturer_id || null,
@@ -201,8 +220,9 @@ export default function CoursesPage() {
 
             <select value={fSem} onChange={e => setFSem(e.target.value)} className="px-3 py-2 rounded-lg text-sm appearance-none outline-none" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
               <option value="">All Semesters</option>
-              <option value="1">Sem 1</option>
-              <option value="2">Sem 2</option>
+              {allSemesters.map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.yearLabel})</option>
+              ))}
             </select>
           </div>
           <button onClick={openAdd} className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
@@ -306,10 +326,23 @@ export default function CoursesPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Semester *</label>
-              <select value={form.semester_number} onChange={e => setForm(p => ({ ...p, semester_number: parseInt(e.target.value, 10) }))} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none outline-none" style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
-                <option value={1}>Sem 1</option>
-                <option value={2}>Sem 2</option>
+              <select 
+                value={form.semester_id} 
+                onChange={e => {
+                  const sem = allSemesters.find(s => s.id === e.target.value);
+                  setForm(p => ({ ...p, semester_id: e.target.value, semester_number: sem?.number || 1 }));
+                }} 
+                className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none outline-none" 
+                style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
+              >
+                <option value="" disabled>Select semester...</option>
+                {allSemesters.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} — {s.yearLabel}</option>
+                ))}
               </select>
+              {allSemesters.length === 0 && (
+                <p className="text-xs mt-1" style={{ color: '#F59E0B' }}>No semesters found. Create an Academic Year first.</p>
+              )}
             </div>
             
             <div>
