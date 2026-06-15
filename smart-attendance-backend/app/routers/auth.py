@@ -33,11 +33,25 @@ settings = get_settings()
 async def check_setup_status(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Institution).limit(1))
     inst = result.scalars().first()
+    
+    # Try to find active academic year and semester
+    acad_res = await db.execute(select(AcademicYear).filter(AcademicYear.is_active == True))
+    active_year = acad_res.scalars().first()
+    
+    active_sem = None
+    if active_year:
+        sem_res = await db.execute(select(Semester).filter(Semester.academic_year_id == active_year.id, Semester.is_active == True))
+        active_sem = sem_res.scalars().first()
+
     return {
         "is_setup": bool(inst and inst.is_setup),
         "institution_name": inst.name if inst else None,
         "shortcode": inst.shortcode if inst else None,
-        "logo_url": inst.logo_url if inst else None
+        "tagline": inst.tagline if inst else None,
+        "logo_url": inst.logo_url if inst else None,
+        "accent_color": inst.accent_color if inst else "#F59E0B",
+        "academic_year": active_year.year_label if active_year else None,
+        "current_semester": active_sem.name if active_sem else None,
     }
 
 @router.post("/setup", status_code=status.HTTP_201_CREATED, response_model=InstitutionSetupResponse)

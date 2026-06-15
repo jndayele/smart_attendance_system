@@ -55,11 +55,11 @@ export default function Sidebar() {
               <GraduationCap className="w-5 h-5" style={{ color: 'var(--bg-deep)' }} />
             </div>
           )}
-          <div className="hidden xl:block">
-            <p className="text-lg font-bold" style={{ fontFamily: "'Playfair Display', serif", color: 'var(--text-primary)' }}>
-              {config.shortCode}
+          <div className="hidden xl:block overflow-hidden">
+            <p className="text-lg font-bold truncate" style={{ fontFamily: "'Playfair Display', serif", color: 'var(--text-primary)' }}>
+              {config.institutionName || config.shortCode}
             </p>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Lecturer Portal</p>
+            <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{config.tagline || 'Lecturer Portal'}</p>
           </div>
         </div>
       </div>

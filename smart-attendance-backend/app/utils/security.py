@@ -42,11 +42,14 @@ def create_reset_token(email: str) -> str:
     to_encode = {"sub": email, "type": "reset", "exp": expire}
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
-def create_activation_token(email: str) -> str:
+def create_activation_token(email: str, name: str = None) -> str:
     """Create a token for lecturer activation."""
     expire = datetime.utcnow() + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS)
     to_encode = {"sub": email, "type": "activation", "exp": expire}
+    if name:
+        to_encode["name"] = name
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
 
 def create_invitation_token(email: str) -> str:
     """Create a token for student invitation."""

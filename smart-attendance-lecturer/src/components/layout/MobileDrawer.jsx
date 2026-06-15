@@ -63,8 +63,8 @@ export default function MobileDrawer({ open, onClose }) {
                 <GraduationCap className="w-4 h-4" style={{ color: 'var(--bg-deep)' }} />
               </div>
             )}
-            <span className="text-lg font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-              {config.shortCode}
+            <span className="text-lg font-bold truncate max-w-[180px]" style={{ fontFamily: "'Playfair Display', serif", color: 'var(--text-primary)' }}>
+              {config.institutionName || config.shortCode}
             </span>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}>

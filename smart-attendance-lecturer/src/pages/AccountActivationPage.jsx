@@ -1,20 +1,50 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAppConfig } from '../context/AppContext';
-import { useLecturerAuth } from '../context/LecturerAuthContext';
-import { GraduationCap, Lock, Eye, EyeOff, Check, CheckCircle } from 'lucide-react';
+import { GraduationCap, Lock, Eye, EyeOff, CheckCircle, Loader2 } from 'lucide-react';
+import { authAPI } from '../api/api';
 
 export default function AccountActivationPage() {
   const { config } = useAppConfig();
-  const { loginAsDemo } = useLecturerAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token');
 
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [success, setSuccess] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (!token) {
+      setExpired(true);
+      return;
+    }
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      const payload = JSON.parse(jsonPayload);
+      
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        setExpired(true);
+      } else {
+        setEmail(payload.sub || '');
+        setName(payload.name || '');
+      }
+    } catch (e) {
+      setExpired(true);
+    }
+  }, [token]);
+
 
   const checks = {
     length: password.length >= 8,
@@ -28,14 +58,22 @@ export default function AccountActivationPage() {
   const strengthLabels = ['', 'Weak', 'Fair', 'Strong'];
   const strengthColors = ['', 'var(--accent-red)', 'var(--accent-amber)', 'var(--accent-green)'];
 
-  const handleActivate = (e) => {
+  const handleActivate = async (e) => {
     e.preventDefault();
-    if (!allValid || !passwordsMatch) return;
-    setSuccess(true);
-    setTimeout(() => {
-      loginAsDemo();
-      navigate('/dashboard');
-    }, 2000);
+    if (!allValid || !passwordsMatch || isLoading) return;
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      await authAPI.activateLecturer(token, password);
+      setSuccess(true);
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to activate account.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (expired) {
@@ -91,29 +129,34 @@ export default function AccountActivationPage() {
             </p>
 
             <form onSubmit={handleActivate} className="space-y-4">
+              {errorMsg && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-500 text-sm mb-4">
+                  {errorMsg}
+                </div>
+              )}
               {/* Pre-filled fields */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Name</label>
                 <div className="relative">
-                  <input type="text" value="Dr. Ama Owusu" readOnly
-                    className="w-full h-11 px-3.5 pr-10 rounded-lg text-sm border"
+                  <input type="text" value={name} readOnly
+                    className="w-full h-11 px-3.5 pr-10 rounded-lg text-sm border outline-none"
                     style={{ backgroundColor: 'var(--bg-raised)', borderColor: 'var(--border-input)', color: 'var(--text-muted)' }}
                   />
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                  <Lock className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Email</label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Email Address</label>
                 <div className="relative">
-                  <input type="email" value="a.owusu@umat.edu.gh" readOnly
-                    className="w-full h-11 px-3.5 pr-10 rounded-lg text-sm border"
+                  <input type="email" value={email} readOnly
+                    className="w-full h-11 px-3.5 pr-10 rounded-lg text-sm border outline-none"
                     style={{ backgroundColor: 'var(--bg-raised)', borderColor: 'var(--border-input)', color: 'var(--text-muted)' }}
                   />
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                  <Lock className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
                 </div>
               </div>
 
-              {/* Password */}
+              {/* Password Fields */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>New Password</label>
                 <div className="relative">
@@ -181,9 +224,13 @@ export default function AccountActivationPage() {
                 ))}
               </div>
 
-              <button type="submit" disabled={!allValid || !passwordsMatch}
-                className="w-full h-11 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-50"
-                style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+              <button
+                type="submit"
+                disabled={!allValid || !passwordsMatch || isLoading}
+                className="w-full h-11 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 mt-8 disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
+              >
+                {isLoading && <Loader2 size={16} className="animate-spin" />}
                 Activate Account
               </button>
             </form>

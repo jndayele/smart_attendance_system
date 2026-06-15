@@ -330,6 +330,49 @@ export const lecturersAPI = {
     const url = qs ? `/admin/lecturers/?${qs}` : '/admin/lecturers/';
     return request(url, { method: 'GET' }, true);
   },
+
+  /** GET /admin/lecturers/{id} */
+  get(id) {
+    return request(`/admin/lecturers/${id}`, { method: 'GET' }, true);
+  },
+
+  /** POST /admin/lecturers/ */
+  create(data) {
+    return request('/admin/lecturers/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** DELETE /admin/lecturers/{id} */
+  delete(id) {
+    return request(`/admin/lecturers/${id}`, { method: 'DELETE' }, true);
+  },
+
+  /** POST /admin/lecturers/{id}/suspend */
+  suspend(id) {
+    return request(`/admin/lecturers/${id}/suspend`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/lecturers/{id}/reactivate */
+  reactivate(id) {
+    return request(`/admin/lecturers/${id}/reactivate`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/lecturers/{id}/reset-password */
+  resetPassword(id) {
+    return request(`/admin/lecturers/${id}/reset-password`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/lecturers/{id}/resend-activation */
+  resendActivation(id) {
+    return request(`/admin/lecturers/${id}/resend-activation`, { method: 'POST' }, true);
+  },
+
+  /** GET /admin/lecturers/{id}/courses */
+  getCourses(id) {
+    return request(`/admin/lecturers/${id}/courses`, { method: 'GET' }, true);
+  },
 };
 
 export const academicYearsAPI = {

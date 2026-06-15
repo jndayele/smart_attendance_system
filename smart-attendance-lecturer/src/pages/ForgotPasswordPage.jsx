@@ -1,16 +1,30 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppConfig } from '../context/AppContext';
-import { GraduationCap, CheckCircle, ArrowLeft } from 'lucide-react';
+import { GraduationCap, CheckCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { authAPI } from '../api/api';
 
 export default function ForgotPasswordPage() {
   const { config } = useAppConfig();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSent(true);
+    if (isLoading || !email) return;
+    
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      await authAPI.forgotPassword(email);
+      setSent(true);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to send reset link.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -41,6 +55,11 @@ export default function ForgotPasswordPage() {
               Enter your email and we'll send a reset link.
             </p>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {errorMsg && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-500 text-sm mb-4">
+                  {errorMsg}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>Email Address</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
@@ -51,9 +70,13 @@ export default function ForgotPasswordPage() {
                   onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
                 />
               </div>
-              <button type="submit"
-                className="w-full h-11 rounded-lg text-sm font-semibold"
-                style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+              <button
+                type="submit"
+                disabled={isLoading || !email}
+                className="w-full h-11 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
+              >
+                {isLoading && <Loader2 size={16} className="animate-spin" />}
                 Send Reset Link
               </button>
             </form>

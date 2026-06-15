@@ -2,17 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppConfig } from '../context/AppContext';
 import { useLecturerAuth } from '../context/LecturerAuthContext';
-import { GraduationCap, Eye, EyeOff, AlertCircle, Lock } from 'lucide-react';
+import { GraduationCap, Eye, EyeOff, AlertCircle, Lock, Loader2 } from 'lucide-react';
+import { authAPI } from '../api/api';
 
 export default function LoginPage() {
   const { config } = useAppConfig();
-  const { lecturer, login, loginAsDemo } = useLecturerAuth();
+  const { lecturer, login } = useLecturerAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [locked, setLocked] = useState(false);
   const [lockTimer, setLockTimer] = useState(0);
@@ -30,32 +32,36 @@ export default function LoginPage() {
     return () => clearInterval(t);
   }, [lockTimer]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (locked) return;
-    if (email === 'a.owusu@umat.edu.gh' && password === 'password123') {
-      login({
-        lecturerName: "Dr. Ama Owusu", firstName: "Ama", lastName: "Owusu",
-        title: "Dr.", email: "a.owusu@umat.edu.gh", staffId: "EMP-001",
-        department: "Computer Science",
+    if (locked || isLoading) return;
+    
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await authAPI.login(email, password);
+      // login(token, profile)
+      login(response.access_token, {
+        name: response.name,
+        email: email, // we can assume email is the same
+        role: response.role,
+        user_id: response.user_id
       });
       navigate('/dashboard');
-    } else {
+    } catch (err) {
       const newAttempts = attempts + 1;
       setAttempts(newAttempts);
-      if (newAttempts >= 3) {
+      if (newAttempts >= 5) {
         setLocked(true);
         setLockTimer(900);
         setError('Account locked for 15 minutes due to too many failed attempts.');
       } else {
-        setError(`Invalid email or password. ${3 - newAttempts} attempts remaining.`);
+        setError(err.message || 'Invalid email or password.');
       }
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  const handleDemo = () => {
-    loginAsDemo();
-    navigate('/dashboard');
   };
 
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -75,10 +81,10 @@ export default function LoginPage() {
           </div>
         )}
         <h1 className="text-[28px] xl:text-[32px] font-bold" style={{ fontFamily: "'Playfair Display', serif", color: 'var(--text-primary)' }}>
-          {config.shortCode}
+          {config.institutionName || 'Smart Attendance'}
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Smart Attendance System — Lecturer Portal
+        <p className="text-sm mt-1 font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {config.tagline || 'Lecturer Portal'}
         </p>
       </div>
 
@@ -145,10 +151,14 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <button type="submit" disabled={locked || !email || !password}
-            className="w-full h-11 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-50"
-            style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
-            Sign In
+          <button
+            type="submit"
+            disabled={locked || !email || !password || isLoading}
+            className="w-full h-11 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 mt-8 disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
+          >
+            {isLoading && <Loader2 size={16} className="animate-spin" />}
+            {locked ? `Locked (${formatTime(lockTimer)})` : 'Sign In'}
           </button>
         </form>
       </div>
@@ -157,19 +167,6 @@ export default function LoginPage() {
         Don't have an account?{' '}
         <span style={{ color: 'var(--text-secondary)' }}>Contact your institution admin.</span>
       </p>
-
-      <div className="flex gap-3 mt-4">
-        <button onClick={handleDemo}
-          className="text-sm px-4 py-2 rounded-lg border transition-colors hover:bg-[var(--bg-raised)]"
-          style={{ borderColor: 'transparent', color: 'var(--text-secondary)' }}>
-          Enter as Dr. Ama Owusu (Demo)
-        </button>
-        <Link to="/activate"
-          className="text-sm px-4 py-2 rounded-lg transition-colors hover:bg-[var(--bg-raised)]"
-          style={{ color: 'var(--text-muted)' }}>
-          View Activation Screen
-        </Link>
-      </div>
     </div>
   );
 }

@@ -212,7 +212,7 @@ async def create_lecturer(
     await db.refresh(new_lec)
     
     # FIX-P0-7: Use settings.FRONTEND_URL for activation link
-    token = create_activation_token(new_user.email)
+    token = create_activation_token(new_user.email, new_lec.name)
     new_lec.activation_token = token
     new_lec.activation_token_expiry = datetime.utcnow() + timedelta(hours=72)
     await db.commit()
@@ -561,7 +561,7 @@ async def resend_activation(
             detail="This lecturer has already activated their account."
         )
 
-    raw_token = create_activation_token(user.email)
+    raw_token = create_activation_token(user.email, lec.name)
     lec.activation_token = raw_token
     lec.activation_token_expiry = datetime.utcnow() + timedelta(hours=72)
     await db.commit()

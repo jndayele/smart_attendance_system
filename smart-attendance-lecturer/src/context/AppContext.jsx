@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authAPI } from '../api/api';
 
 const AppContext = createContext(null);
 
 const defaultConfig = {
-  institutionName: "University of Mines and Technology",
-  shortCode: "UMAT",
+  institutionName: "Smart Attendance",
+  shortCode: "SA",
+  tagline: "Modern Attendance Management",
   logoUrl: "",
   accentColor: "#F59E0B",
-  academicYear: "2024/2025",
-  currentSemester: "Semester 1",
+  academicYear: "",
+  currentSemester: "",
 };
 
 export function AppProvider({ children }) {
@@ -16,6 +18,32 @@ export function AppProvider({ children }) {
     const saved = localStorage.getItem('institutionConfig');
     return saved ? JSON.parse(saved) : defaultConfig;
   });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const data = await authAPI.getPublicSettings();
+        if (data.is_setup) {
+          setConfig(prev => ({
+            ...prev,
+            institutionName: data.institution_name || prev.institutionName,
+            shortCode: data.shortcode || prev.shortCode,
+            tagline: data.tagline || prev.tagline,
+            logoUrl: data.logo_url || prev.logoUrl,
+            accentColor: data.accent_color || prev.accentColor,
+            academicYear: data.academic_year || prev.academicYear,
+            currentSemester: data.current_semester || prev.currentSemester,
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to load public settings:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-primary', config.accentColor);
@@ -26,7 +54,7 @@ export function AppProvider({ children }) {
   }, [config]);
 
   return (
-    <AppContext.Provider value={{ config, setConfig }}>
+    <AppContext.Provider value={{ config, setConfig, isLoading }}>
       {children}
     </AppContext.Provider>
   );
