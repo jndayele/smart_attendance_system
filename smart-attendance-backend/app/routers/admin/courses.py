@@ -587,3 +587,37 @@ async def get_course_history(
         })
 
     return {"sessions": result, "total": total, "page": page}
+
+
+# ---------------------------------------------------------------------------
+# SESSIONS LIST (for admin override modal)
+# ---------------------------------------------------------------------------
+
+@router.get("/{course_id}/sessions")
+async def list_course_sessions(
+    course_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Return a lightweight list of sessions for a course (for the override dropdown)."""
+    course = await get_course_or_404(course_id, db)
+
+    res = await db.execute(
+        select(Session)
+        .where(Session.course_id == course.id)
+        .order_by(Session.session_date.desc(), Session.started_at.desc())
+    )
+    sessions = res.scalars().all()
+
+    return {
+        "sessions": [
+            {
+                "id": str(s.id),
+                "label": s.label or "",
+                "date": str(s.session_date),
+                "start_time": s.started_at.isoformat() if s.started_at else None,
+                "is_locked": s.is_locked,
+            }
+            for s in sessions
+        ]
+    }

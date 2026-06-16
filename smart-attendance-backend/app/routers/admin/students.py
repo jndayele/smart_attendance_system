@@ -109,6 +109,56 @@ async def compute_attendance_pct_for(student_id, course_id, db: AsyncSession) ->
     return (present / len(session_ids)) * 100.0
 
 
+async def compute_global_attendance_pct(student_id: UUID, db: AsyncSession) -> Optional[float]:
+    # Find all courses the student is enrolled in
+    sc_res = await db.execute(select(StudentCourse.course_id).where(StudentCourse.student_id == student_id))
+    course_ids = [r[0] for r in sc_res.all()]
+    if not course_ids:
+        return None
+        
+    # Find all locked sessions for these courses
+    sess_res = await db.execute(
+        select(Session.id).where(Session.course_id.in_(course_ids), Session.is_locked == True)
+    )
+    session_ids = [r[0] for r in sess_res.all()]
+    if not session_ids:
+        return None
+        
+    # Count present records for these sessions
+    pres_res = await db.execute(
+        select(func.count(AttendanceRecord.id)).where(
+            AttendanceRecord.student_id == student_id,
+            AttendanceRecord.session_id.in_(session_ids),
+            AttendanceRecord.status == "present",
+        )
+    )
+    present = pres_res.scalar() or 0
+    return round((present / len(session_ids)) * 100.0, 1)
+
+
+# ---------------------------------------------------------------------------
+# LEVELS  (must be before /{student_id} to avoid route shadowing)
+# ---------------------------------------------------------------------------
+
+@router.get("/levels")
+async def get_student_levels(db: AsyncSession = Depends(get_db)):
+    """
+    Returns the distinct student levels that currently exist in the DB,
+    merged with the standard configured set so the list is never empty.
+    """
+    STANDARD_LEVELS = [100, 200, 300, 400, 500, 600]
+
+    res = await db.execute(
+        select(Student.level).distinct().order_by(Student.level)
+    )
+    db_levels = [r[0] for r in res.all()]
+
+    # Merge: include standard levels + any custom ones from DB
+    merged = sorted(set(STANDARD_LEVELS) | set(db_levels))
+
+    return {"levels": merged}
+
+
 # ---------------------------------------------------------------------------
 # LIST
 # ---------------------------------------------------------------------------
@@ -125,8 +175,9 @@ async def list_students(
 ):
     query = (
         select(Student, Department.name.label("dept_name"), Programme.name.label("prog_name"), User)
-        .join(Department)
-        .join(Programme)
+        .select_from(Student)
+        .join(Department, Student.department_id == Department.id)
+        .join(Programme, Student.programme_id == Programme.id)
         .join(User, Student.user_id == User.id)
     )
     
@@ -148,9 +199,11 @@ async def list_students(
 
     res = await db.execute(query.offset((page - 1) * limit).limit(limit))
     rows = res.all()
+
     
     responses = []
     for stu, d_name, p_name, user in rows:
+        att_avg = await compute_global_attendance_pct(stu.id, db)
         responses.append(StudentResponse(
             id=stu.id,
             user_id=stu.user_id,
@@ -168,6 +221,7 @@ async def list_students(
             is_active=user.is_active,
             is_verified=user.is_verified,
             invitation_status=getattr(stu, "invitation_status", None) or "pending",
+            attendance_avg=att_avg,
             last_login=user.last_login,
             created_at=stu.created_at,
             updated_at=stu.updated_at,
@@ -277,10 +331,9 @@ async def create_student(
             detail=f"Student created but enrollment failed: {str(e)}"
         )
 
-    # FIX-P0-7: Use settings.FRONTEND_URL for invitation link
-    invitation_link = f"{settings.FRONTEND_URL}/register-student?token={raw_token}"
-    background_tasks.add_task(
-        send_student_invitation_email,
+    # FIX-P0-7: Use settings.STUDENT_FRONTEND_URL for invitation link
+    invitation_link = f"{settings.STUDENT_FRONTEND_URL}/register-student?token={raw_token}"
+    await send_student_invitation_email(
         new_user.email,
         new_stu.name,
         new_stu.student_id,
@@ -1062,9 +1115,8 @@ async def bulk_import_students(
             await db.commit()
             await db.refresh(new_stu)
 
-            invitation_link = f"{settings.FRONTEND_URL}/register-student?token={raw_token}"
-            background_tasks.add_task(
-                send_student_invitation_email,
+            invitation_link = f"{settings.STUDENT_FRONTEND_URL}/register-student?token={raw_token}"
+            await send_student_invitation_email(
                 new_user.email,
                 new_stu.name,
                 new_stu.student_id,

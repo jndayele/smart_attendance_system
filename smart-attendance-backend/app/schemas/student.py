@@ -88,6 +88,7 @@ class StudentResponse(BaseModel):
     is_active: bool
     is_verified: bool
     invitation_status: str
+    attendance_avg: Optional[float] = None
     last_login: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

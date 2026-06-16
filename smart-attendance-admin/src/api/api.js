@@ -318,6 +318,14 @@ export const coursesAPI = {
   delete(id) {
     return request(`/admin/courses/${id}`, { method: 'DELETE' }, true);
   },
+
+  /**
+   * Get sessions for a course
+   * GET /admin/courses/{id}/sessions
+   */
+  getSessions(id) {
+    return request(`/admin/courses/${id}/sessions`, { method: 'GET' }, true);
+  },
 };
 
 export const lecturersAPI = {
@@ -426,5 +434,71 @@ export const academicYearsAPI = {
   /** DELETE /admin/academic-years/{yearId} */
   deleteYear(yearId) {
     return request(`/admin/academic-years/${yearId}`, { method: 'DELETE' }, true);
+  },
+};
+
+export const studentsAPI = {
+  /** GET /admin/students/ */
+  list(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/admin/students/?${qs}` : '/admin/students/';
+    return request(url, { method: 'GET' }, true);
+  },
+
+  /** GET /admin/students/{id} */
+  get(id) {
+    return request(`/admin/students/${id}`, { method: 'GET' }, true);
+  },
+
+  /** POST /admin/students/ */
+  create(data) {
+    return request('/admin/students/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** POST /admin/students/bulk-import */
+  bulkImport(data) {
+    return request('/admin/students/bulk-import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /** DELETE /admin/students/{id} */
+  delete(id) {
+    return request(`/admin/students/${id}`, { method: 'DELETE' }, true);
+  },
+
+  /** POST /admin/students/{id}/suspend */
+  suspend(id) {
+    return request(`/admin/students/${id}/suspend`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/students/{id}/reactivate */
+  reactivate(id) {
+    return request(`/admin/students/${id}/reactivate`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/students/{id}/resend-invitation */
+  resendInvitation(id) {
+    return request(`/admin/students/${id}/resend-invitation`, { method: 'POST' }, true);
+  },
+
+  /** POST /admin/students/{id}/move-level */
+  moveLevel(id, newLevel) {
+    return request(`/admin/students/${id}/move-level`, {
+      method: 'POST',
+      body: JSON.stringify({ new_level: newLevel }),
+    }, true);
+  },
+
+  /** POST /admin/students/attendance/override */
+  overrideAttendance(data) {
+    return request('/admin/students/attendance/override', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
   },
 };

@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
     # Frontend
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:5173"
+    LECTURER_FRONTEND_URL: str = "http://localhost:5174"
+    STUDENT_FRONTEND_URL: str = "http://localhost:5175"
 
     model_config = SettingsConfigDict(
         env_file=".env",

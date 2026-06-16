@@ -215,10 +215,10 @@ async def create_lecturer(
     token = create_activation_token(new_user.email, new_lec.name)
     new_lec.activation_token = token
     new_lec.activation_token_expiry = datetime.utcnow() + timedelta(hours=72)
+    # FIX-P0-7: Use settings.LECTURER_FRONTEND_URL for activation link
+    activation_link = f"{settings.LECTURER_FRONTEND_URL}/activate?token={token}"
     await db.commit()
-
-    activation_link = f"{settings.FRONTEND_URL}/activate-lecturer?token={token}"
-    background_tasks.add_task(send_lecturer_activation_email, new_user.email, new_lec.name, activation_link)
+    await send_lecturer_activation_email(new_user.email, new_lec.name, activation_link)
     
     await NotificationService.log_audit_action(
         performed_by=current_user.id,
@@ -566,7 +566,7 @@ async def resend_activation(
     lec.activation_token_expiry = datetime.utcnow() + timedelta(hours=72)
     await db.commit()
 
-    activation_link = f"{settings.FRONTEND_URL}/activate-lecturer?token={raw_token}"
+    activation_link = f"{settings.LECTURER_FRONTEND_URL}/activate?token={raw_token}"
     await send_lecturer_activation_email(user.email, lec.name, activation_link)
 
     await NotificationService.log_audit_action(

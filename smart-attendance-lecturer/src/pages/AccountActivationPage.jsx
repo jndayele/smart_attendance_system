@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAppConfig } from '../context/AppContext';
-import { GraduationCap, Lock, Eye, EyeOff, CheckCircle, Loader2 } from 'lucide-react';
+import { GraduationCap, Lock, Eye, EyeOff, CheckCircle, Loader2, Check } from 'lucide-react';
 import { authAPI } from '../api/api';
 
 export default function AccountActivationPage() {

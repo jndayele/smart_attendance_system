@@ -44,12 +44,25 @@ class NotificationService:
         ip_address: Optional[str],
         db: AsyncSession
     ) -> AuditLog:
+        def sanitize(obj):
+            if isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [sanitize(v) for v in obj]
+            elif isinstance(obj, uuid.UUID):
+                return str(obj)
+            elif hasattr(obj, "isoformat"):
+                return obj.isoformat()
+            return obj
+
+        sanitized_details = sanitize(details) if details else None
+
         log = AuditLog(
             performed_by=performed_by,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            details=details,
+            details=sanitized_details,
             ip_address=ip_address
         )
         db.add(log)
