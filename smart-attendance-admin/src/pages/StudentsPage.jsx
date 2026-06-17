@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
 import SlideOver from '@/components/ui-custom/SlideOver';
 import { useToast } from '@/components/ui-custom/ToastProvider';
-import { Plus, Search, Upload, Download, Pencil, Trash2, Eye, RotateCcw, Info, AlertTriangle, CheckCircle, Clock, X, FileText, Loader2 } from 'lucide-react';
+import { Plus, Search, Upload, Pencil, Trash2, Eye, RotateCcw, Info, AlertTriangle, CheckCircle, Clock, X, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentsAPI, departmentsAPI, programmesAPI, coursesAPI } from '../api/api';
 import Papa from 'papaparse';
@@ -19,6 +19,7 @@ export default function StudentsPage() {
   // ----- Queries -----
   const { data: deptsRes } = useQuery({ queryKey: ['departments'], queryFn: () => departmentsAPI.list() });
   const { data: progsRes } = useQuery({ queryKey: ['programmes'], queryFn: () => programmesAPI.list() });
+  const { data: levelsRes } = useQuery({ queryKey: ['studentLevels'], queryFn: () => studentsAPI.getLevels() });
   const { data: studentsRes, isLoading } = useQuery({
     queryKey: ['students', search, fProg, fLevel],
     queryFn: () => {
@@ -35,11 +36,19 @@ export default function StudentsPage() {
   const programmes = progsRes?.programmes || [];
   const students = studentsRes?.students || [];
 
+  // Levels: use programme.levels when a programme is selected in the form;
+  // for the filter dropdown use the union across all programmes (same as CoursesPage)
+  const allLevels = Array.from(new Set(programmes.flatMap(p => p.levels || []))).sort((a, b) => a - b);
+  // Fallback: use the /levels endpoint if no programme levels are present
+  const backendLevels = levelsRes?.levels || [100, 200, 300, 400, 500, 600];
+  const filterLevels = allLevels.length > 0 ? allLevels : backendLevels;
+
   // ----- State -----
   const [slideOpen, setSlideOpen] = useState(false);
   const [slideType, setSlideType] = useState('add');
   const [profileItem, setProfileItem] = useState(null);
-  
+  const [deleteTarget, setDeleteTarget] = useState(null); // student to confirm delete
+
   // Bulk Import state
   const [bulkStep, setBulkStep] = useState(0);
   const [bulkData, setBulkData] = useState([]);
@@ -47,9 +56,13 @@ export default function StudentsPage() {
   const [bulkStats, setBulkStats] = useState({ created: 0, failed: 0 });
 
   // Forms
-  const [form, setForm] = useState({ name: '', sid: '', email: '', dept: '', programme: '', level: '100', semEntry: '1' });
+  const [form, setForm] = useState({ name: '', sid: '', email: '', dept: '', programme: '', level: '', semEntry: '1' });
   const [overrideForm, setOverrideForm] = useState({ course: '', session: '', status: 'present', reason: '' });
   const [errors, setErrors] = useState({});
+
+  // Derive levels for the currently selected programme in the add form
+  const selectedProgramme = programmes.find(p => p.id === form.programme);
+  const formLevels = selectedProgramme ? (selectedProgramme.levels || backendLevels) : backendLevels;
 
   // ----- Dynamic Queries (Details & Sessions) -----
   const { data: studentDetailsRes, isLoading: detailsLoading } = useQuery({
@@ -125,12 +138,14 @@ export default function StudentsPage() {
 
   // ----- Handlers -----
   const openAdd = () => { 
-    setSlideType('add'); 
+    setSlideType('add');
+    const firstProg = programmes[0];
+    const firstLevel = firstProg?.levels?.[0]?.toString() || backendLevels[0]?.toString() || '100';
     setForm({ 
       name: '', sid: '', email: '', 
       dept: departments[0]?.id || '', 
-      programme: programmes[0]?.id || '', 
-      level: '100', semEntry: '1' 
+      programme: firstProg?.id || '', 
+      level: firstLevel, semEntry: '1' 
     }); 
     setErrors({}); 
     setSlideOpen(true); 
@@ -199,13 +214,13 @@ export default function StudentsPage() {
           if (!r.email) errs.push(`Row ${i+2}: Missing email`);
           if (!r.student_id) errs.push(`Row ${i+2}: Missing student ID`);
           mapped.push({
-            name: r.name || '',
-            student_id: r.student_id || '',
-            email: r.email || '',
-            department_code: r.department || '',
-            programme_code: r.programme || '',
-            level: parseInt(r.level, 10) || 100,
-            semester_of_entry: parseInt(r.semester, 10) || 1
+            name: r.name || r.Name || '',
+            student_id: r.student_id || r['Student ID'] || r.studentID || '',
+            email: r.email || r.Email || '',
+            department_code: r.department_code || r.department || r.Department || '',
+            programme_code: r.programme_code || r.programme || r.Programme || '',
+            level: parseInt(r.level || r.Level, 10) || 100,
+            semester_of_entry: parseInt(r.semester || r.Semester, 10) || 1
           });
         });
         setBulkData(mapped);
@@ -267,7 +282,7 @@ export default function StudentsPage() {
             </select>
             <select value={fLevel} onChange={e => setFLevel(e.target.value)} className="px-3 py-2 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
               <option value="">All Levels</option>
-              {[100, 200, 300, 400, 500, 600].map(o => <option key={o} value={o}>L{o}</option>)}
+              {filterLevels.map(o => <option key={o} value={o}>L{o}</option>)}
             </select>
           </div>
           <div className="flex gap-2">
@@ -333,7 +348,7 @@ export default function StudentsPage() {
                         {s.invitation_status === 'expired' && (
                           <button onClick={() => resendMutation.mutate(s.id)} className="p-1.5 rounded hover:bg-white/5" style={{ color: '#F59E0B' }} title="Resend Invite"><RotateCcw size={14} /></button>
                         )}
-                        <button onClick={() => { if(window.confirm('Delete student?')) deleteMutation.mutate(s.id); }} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--accent-red)' }} title="Delete"><Trash2 size={14} /></button>
+                        <button onClick={() => setDeleteTarget(s)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--accent-red)' }} title="Delete"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -360,7 +375,12 @@ export default function StudentsPage() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Programme *</label>
-              <select value={form.programme} onChange={e => setForm(p => ({ ...p, programme: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: errors.programme ? '1px solid var(--accent-red)' : '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
+              <select value={form.programme} onChange={e => {
+                const pId = e.target.value;
+                const prog = programmes.find(p => p.id === pId);
+                const firstLevel = prog?.levels?.[0]?.toString() || backendLevels[0]?.toString() || '100';
+                setForm(p => ({ ...p, programme: pId, level: firstLevel }));
+              }} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: errors.programme ? '1px solid var(--accent-red)' : '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
                 <option value="">Select...</option>
                 {programmes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
@@ -370,7 +390,7 @@ export default function StudentsPage() {
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Level / Year *</label>
               <select value={form.level} onChange={e => setForm(p => ({ ...p, level: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
-                {[100, 200, 300, 400, 500, 600].map(o => <option key={o} value={o}>L{o}</option>)}
+                {formLevels.map(l => <option key={l} value={l}>L{l}</option>)}
               </select>
             </div>
             <div>
@@ -533,8 +553,46 @@ export default function StudentsPage() {
               </div>
             </div>
           </div>
-        )}
-      </SlideOver>
+        )}\n      </SlideOver>
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
+                <Trash2 size={18} style={{ color: '#EF4444' }} />
+              </div>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Delete Student</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+              Are you sure you want to permanently delete{' '}
+              <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{deleteTarget.name}</span>
+              {' '}({deleteTarget.student_id})? All attendance records will also be removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium"
+                style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-primary)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }}
+                disabled={deleteMutation.isPending}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#EF4444', color: '#fff' }}
+              >
+                {deleteMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <><Trash2 size={14} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1017,7 +1017,10 @@ async def bulk_import_students(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
+    # Capture ID immediately — current_user expires after commits inside the loop
+    admin_id = current_user.id
     total_submitted = len(data.students)
+
     total_created = 0
     total_failed = 0
     errors = []
@@ -1137,7 +1140,7 @@ async def bulk_import_students(
             })
 
     await NotificationService.log_audit_action(
-        performed_by=current_user.id,
+        performed_by=admin_id,
         action="bulk_student_import",
         entity_type="student",
         entity_id=None,

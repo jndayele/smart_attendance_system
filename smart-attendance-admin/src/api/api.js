@@ -501,4 +501,9 @@ export const studentsAPI = {
       body: JSON.stringify(data),
     }, true);
   },
+
+  /** GET /admin/students/levels */
+  getLevels() {
+    return request('/admin/students/levels', { method: 'GET' }, true);
+  },
 };

@@ -7,7 +7,10 @@ from fastapi import HTTPException, status
 from app.models.institution import Institution
 from app.models.user import User, RoleEnum
 from app.models.lecturer import Lecturer
-from app.models.student import Student
+from app.models.student import Student, StudentCourse
+from app.models.programme import Programme
+from app.models.course import Course
+from app.services.cloudinary_service import upload_image
 from app.utils.security import (
     hash_password, verify_password, create_access_token, 
     create_reset_token, decode_token
@@ -134,6 +137,39 @@ class AuthService:
         return create_access_token(data={"sub": str(user.id), "role": user.role.value})
 
     @staticmethod
+    async def validate_student_invitation(db: AsyncSession, token: str) -> dict:
+        result = await db.execute(select(Student).filter(Student.invitation_token == token))
+        student = result.scalars().first()
+        
+        if not student or not student.invitation_token_expiry or student.invitation_token_expiry < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+        # Get User email
+        user_res = await db.execute(select(User).filter(User.id == student.user_id))
+        user = user_res.scalars().first()
+
+        # Get Programme
+        prog_res = await db.execute(select(Programme).filter(Programme.id == student.programme_id))
+        prog = prog_res.scalars().first()
+
+        # Get Enrolled Courses
+        sc_res = await db.execute(
+            select(Course)
+            .join(StudentCourse, StudentCourse.course_id == Course.id)
+            .filter(StudentCourse.student_id == student.id)
+        )
+        courses = sc_res.scalars().all()
+
+        return {
+            "name": student.name,
+            "student_id": student.student_id,
+            "email": user.email if user else "",
+            "programme": prog.name if prog else "",
+            "level": student.level,
+            "courses": [{"code": c.code, "name": c.title} for c in courses]
+        }
+
+    @staticmethod
     async def register_student(db: AsyncSession, token: str, password: str, image_bytes: bytes) -> str:
         result = await db.execute(select(Student).filter(Student.invitation_token == token))
         student = result.scalars().first()
@@ -149,6 +185,14 @@ class AuthService:
             encoding = FaceService.extract_face_encoding(image_bytes)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+        # Upload to Cloudinary for profile picture
+        try:
+            profile_url = upload_image(image_bytes, folder="students/profiles")
+            student.profile_picture_url = profile_url
+        except Exception as e:
+            # We don't fail registration if profile upload fails, but we log it
+            print(f"Cloudinary upload failed: {str(e)}")
 
         student.face_encoding = encoding
         student.face_registered = True

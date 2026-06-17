@@ -219,6 +219,12 @@ async def activate_lecturer(request: ActivateLecturerRequest, db: AsyncSession =
     access_token = await AuthService.activate_lecturer(db, request.token, request.password)
     return TokenResponse(access_token=access_token)
 
+@router.get("/validate-student-invitation")
+async def validate_student_invitation(token: str, db: AsyncSession = Depends(get_db)):
+    """Validate student invitation token and return pre-filled details."""
+    data = await AuthService.validate_student_invitation(db, token)
+    return data
+
 @router.post("/register-student", response_model=TokenResponse)
 async def register_student(
     token: str = Form(...),
