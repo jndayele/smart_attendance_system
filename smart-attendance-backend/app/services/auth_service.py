@@ -188,7 +188,7 @@ class AuthService:
 
         # Upload to Cloudinary for profile picture
         try:
-            profile_url = upload_image(image_bytes, folder="students/profiles")
+            profile_url = await upload_image(image_bytes, folder="students/profiles")
             student.profile_picture_url = profile_url
         except Exception as e:
             # We don't fail registration if profile upload fails, but we log it

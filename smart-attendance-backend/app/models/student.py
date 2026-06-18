@@ -21,6 +21,7 @@ class Student(Base):
     # Stores ArcFace 512-dimensional float vector as a JSON array
     face_encoding = Column(JSON, nullable=True)
     face_registered = Column(Boolean, default=False)
+    profile_picture_url = Column(String(500), nullable=True)
     
     invitation_token = Column(String(255), nullable=True)
     invitation_token_expiry = Column(DateTime, nullable=True)

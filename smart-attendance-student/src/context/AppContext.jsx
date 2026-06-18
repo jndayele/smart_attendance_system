@@ -2,13 +2,15 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AppContext = createContext(null);
 
+import { authAPI } from '@/api/api';
+
 const DEFAULT_CONFIG = {
-  institutionName: "University of Mines and Technology",
-  shortCode: "UMAT",
+  institutionName: "University Portal",
+  shortCode: "UNI",
   logoUrl: "",
   accentColor: "#F59E0B",
-  academicYear: "2024/2025",
-  currentSemester: "Semester 1",
+  academicYear: "",
+  currentSemester: "",
 };
 
 export function AppProvider({ children }) {
@@ -18,13 +20,36 @@ export function AppProvider({ children }) {
   });
 
   useEffect(() => {
+    // Fetch public settings from backend
+    const loadSettings = async () => {
+      try {
+        const data = await authAPI.getPublicSettings();
+        if (data) {
+          updateConfig({
+            institutionName: data.institutionName || config.institutionName,
+            shortCode: data.shortCode || config.shortCode,
+            tagline: data.tagline || config.tagline,
+            logoUrl: data.logoUrl || config.logoUrl,
+            accentColor: data.accentColor || config.accentColor
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load public settings:", err);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  useEffect(() => {
     document.documentElement.style.setProperty('--accent-primary', config.accentColor);
   }, [config.accentColor]);
 
   const updateConfig = (updates) => {
-    const newConfig = { ...config, ...updates };
-    setConfig(newConfig);
-    localStorage.setItem('institutionConfig', JSON.stringify(newConfig));
+    setConfig(prev => {
+      const newConfig = { ...prev, ...updates };
+      localStorage.setItem('institutionConfig', JSON.stringify(newConfig));
+      return newConfig;
+    });
   };
 
   return (

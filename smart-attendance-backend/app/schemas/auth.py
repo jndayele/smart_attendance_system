@@ -74,3 +74,7 @@ class UserProfileResponse(BaseModel):
     email: str
     role: str
     name: Optional[str] = None
+    student_id: Optional[str] = None
+    programme: Optional[str] = None
+    level: Optional[int] = None
+    profile_picture_url: Optional[str] = None

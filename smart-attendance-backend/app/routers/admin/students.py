@@ -204,6 +204,11 @@ async def list_students(
     responses = []
     for stu, d_name, p_name, user in rows:
         att_avg = await compute_global_attendance_pct(stu.id, db)
+        
+        status_val = "pending"
+        if user.is_active and user.is_verified and stu.invitation_token is None:
+            status_val = "accepted"
+
         responses.append(StudentResponse(
             id=stu.id,
             user_id=stu.user_id,
@@ -220,7 +225,7 @@ async def list_students(
             is_suspended=stu.is_suspended,
             is_active=user.is_active,
             is_verified=user.is_verified,
-            invitation_status=getattr(stu, "invitation_status", None) or "pending",
+            invitation_status=status_val,
             attendance_avg=att_avg,
             last_login=user.last_login,
             created_at=stu.created_at,
@@ -458,6 +463,10 @@ async def get_student(
             created_at=ar.created_at,
         ))
 
+    status_val = "pending"
+    if user.is_active and user.is_verified and stu.invitation_token is None:
+        status_val = "accepted"
+
     return StudentDetailResponse(
         id=stu.id,
         user_id=stu.user_id,
@@ -474,7 +483,7 @@ async def get_student(
         is_suspended=stu.is_suspended,
         is_active=user.is_active,
         is_verified=user.is_verified,
-        invitation_status=getattr(stu, "invitation_status", None) or "pending",
+        invitation_status=status_val,
         last_login=user.last_login,
         created_at=stu.created_at,
         updated_at=stu.updated_at,

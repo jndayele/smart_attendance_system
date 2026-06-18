@@ -189,6 +189,26 @@ async def setup_institution(
         setup_complete=True
     )
 
+@router.get("/public-settings")
+async def get_public_settings(db: AsyncSession = Depends(get_db)):
+    """Get public institution settings for the frontend (logo, name, colors)."""
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    if not inst:
+        return {
+            "institutionName": "University Portal",
+            "shortCode": "UNI",
+            "logoUrl": "",
+            "accentColor": "#F59E0B"
+        }
+    return {
+        "institutionName": inst.name,
+        "shortCode": inst.shortcode,
+        "tagline": inst.tagline,
+        "logoUrl": inst.logo_url,
+        "accentColor": inst.accent_color
+    }
+
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT."""
@@ -247,6 +267,11 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
 async def get_me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get current user basic profile."""
     name = None
+    student_id = None
+    programme_name = None
+    level = None
+    profile_picture_url = None
+
     if current_user.role == RoleEnum.lecturer:
         res = await db.execute(select(Lecturer).filter(Lecturer.user_id == current_user.id))
         lec = res.scalars().first()
@@ -254,7 +279,15 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
     elif current_user.role == RoleEnum.student:
         res = await db.execute(select(Student).filter(Student.user_id == current_user.id))
         stu = res.scalars().first()
-        if stu: name = stu.name
+        if stu: 
+            name = stu.name
+            student_id = stu.student_id
+            level = stu.level
+            profile_picture_url = stu.profile_picture_url
+            from app.models.programme import Programme
+            prog_res = await db.execute(select(Programme).filter(Programme.id == stu.programme_id))
+            prog = prog_res.scalars().first()
+            if prog: programme_name = prog.name
     else:
         name = current_user.display_name if current_user.display_name else "Administrator"
 
@@ -262,6 +295,10 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
         user_id=str(current_user.id),
         email=current_user.email,
         role=current_user.role.value,
-        name=name
+        name=name,
+        student_id=student_id,
+        programme=programme_name,
+        level=level,
+        profile_picture_url=profile_picture_url
     )
 

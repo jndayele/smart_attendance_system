@@ -7,7 +7,7 @@ import { authAPI, setToken } from '../api/api';
 
 export default function RegisterPage() {
   const { shortCode, logoUrl } = useAppConfig();
-  const { login } = useStudentAuth();
+  const { loginSuccess } = useStudentAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
@@ -94,7 +94,7 @@ export default function RegisterPage() {
 
       const res = await authAPI.registerStudent(formData);
       
-      setToken(res.access_token);
+      await loginSuccess(res);
       
       setPhotoStatus('success');
       setTimeout(() => setStep(3), 800);
@@ -110,14 +110,6 @@ export default function RegisterPage() {
     const timer = setInterval(() => {
       setRedirectCountdown(prev => {
         if (prev <= 1) {
-          login({ 
-            name: studentData.name, 
-            firstName: studentData.name.split(' ')[0], 
-            studentId: studentData.student_id,
-            email: studentData.email,
-            programme: studentData.programme,
-            level: `Level ${studentData.level}`
-          });
           navigate('/dashboard');
           return 0;
         }
@@ -125,7 +117,7 @@ export default function RegisterPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [step, login, navigate, studentData]);
+  }, [step, navigate]);
 
   const StepIndicator = () => (
     <div className="flex items-center justify-center gap-2 mb-8">

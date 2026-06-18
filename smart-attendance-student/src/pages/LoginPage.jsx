@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { GraduationCap, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { useAppConfig } from '../context/AppContext';
 import { useStudentAuth } from '../context/AuthContext';
 import { useSession } from '../context/SessionContext';
+import { authAPI } from '../api/api';
 
 export default function LoginPage() {
   const { shortCode, logoUrl } = useAppConfig();
-  const { isLoggedIn, loginAsDemo } = useStudentAuth();
+  const { isLoggedIn, loginSuccess } = useStudentAuth();
   const { startDemoSession } = useSession();
   const navigate = useNavigate();
 
@@ -17,6 +18,8 @@ export default function LoginPage() {
   const [attempts, setAttempts] = useState(0);
   const [locked, setLocked] = useState(false);
   const [lockTimer, setLockTimer] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (isLoggedIn) navigate('/dashboard', { replace: true });
@@ -33,21 +36,31 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [locked, lockTimer]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (locked) return;
-    const newAttempts = attempts + 1;
-    if (newAttempts >= 5) {
-      setLocked(true);
-      setLockTimer(900);
+    
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const data = await authAPI.login(email, password);
+      if (data.role !== 'student') {
+        throw new Error('Please use the admin/lecturer portal to log in.');
+      }
+      await loginSuccess(data);
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      const msg = err.message || 'Login failed';
+      setErrorMsg(msg);
+      const newAttempts = attempts + 1;
+      if (newAttempts >= 5) {
+        setLocked(true);
+        setLockTimer(900);
+      }
+      setAttempts(newAttempts);
+    } finally {
+      setIsLoading(false);
     }
-    setAttempts(newAttempts);
-  };
-
-  const handleDemoLogin = () => {
-    loginAsDemo();
-    startDemoSession();
-    navigate('/dashboard');
   };
 
   const lockMinutes = Math.floor(lockTimer / 60);
@@ -77,12 +90,12 @@ export default function LoginPage() {
           <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Sign in to your student account</p>
 
           {/* Error banners */}
-          {attempts > 0 && !locked && (
+          {errorMsg && !locked && (
             <div className="flex items-start gap-2 p-3 rounded-lg mb-4"
               style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
               <AlertCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--accent-red)' }} />
               <p className="text-sm" style={{ color: 'var(--accent-red)' }}>
-                Incorrect email or password. {5 - attempts} attempts remaining before lockout.
+                {errorMsg}. {5 - attempts} attempts remaining before lockout.
               </p>
             </div>
           )}
@@ -101,59 +114,41 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Student Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
                 placeholder="student@university.edu"
-                disabled={locked}
                 className="w-full h-12 px-4 rounded-lg text-sm outline-none transition-all duration-150"
-                style={{
-                  backgroundColor: 'var(--bg-deep)',
-                  border: '1px solid var(--border-input)',
-                  color: 'var(--text-primary)',
-                }}
+                style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
                 onFocus={e => e.target.style.borderColor = 'var(--accent-primary)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
-              />
+                onBlur={e => e.target.style.borderColor = 'var(--border-input)'} />
             </div>
+
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Password</label>
+                <button type="button" onClick={() => navigate('/forgot-password')} className="text-xs font-medium hover:underline" style={{ color: 'var(--accent-primary)' }}>
+                  Forgot?
+                </button>
+              </div>
               <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  disabled={locked}
-                  className="w-full h-12 px-4 pr-12 rounded-lg text-sm outline-none transition-all duration-150"
-                  style={{
-                    backgroundColor: 'var(--bg-deep)',
-                    border: '1px solid var(--border-input)',
-                    color: 'var(--text-primary)',
-                  }}
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required
+                  className="w-full h-12 pl-4 pr-11 rounded-lg text-sm outline-none transition-all duration-150"
+                  style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}
                   onFocus={e => e.target.style.borderColor = 'var(--accent-primary)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border-input)'}
-                />
+                  onBlur={e => e.target.style.borderColor = 'var(--border-input)'} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1" style={{ color: 'var(--text-muted)' }}>
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-black/5"
+                  style={{ color: 'var(--text-muted)' }}>
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            <div className="text-right">
-              <button type="button" onClick={() => navigate('/forgot-password')}
-                className="text-sm font-medium hover:underline" style={{ color: 'var(--accent-primary)' }}>
-                Forgot Password?
-              </button>
-            </div>
-
-            <button type="submit" disabled={locked}
-              className="w-full h-12 rounded-lg font-semibold text-sm transition-all duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+            <button type="submit" disabled={locked || isLoading}
+              className="w-full h-12 mt-2 rounded-lg font-semibold text-sm transition-all duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
-              Sign In
+              {isLoading && <Loader2 size={16} className="animate-spin" />}
+              {isLoading ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
         </div>
@@ -161,20 +156,6 @@ export default function LoginPage() {
         <p className="text-center text-sm mt-6" style={{ color: 'var(--text-muted)' }}>
           New student? Check your email for your registration link.
         </p>
-
-        {/* Demo shortcuts */}
-        <div className="flex flex-col items-center gap-2 mt-4">
-          <button onClick={handleDemoLogin}
-            className="text-sm font-medium px-4 py-2 rounded-lg transition-colors hover:opacity-80"
-            style={{ color: 'var(--text-secondary)', backgroundColor: 'transparent' }}>
-            → Enter as Kwame Asante (Demo)
-          </button>
-          <button onClick={() => navigate('/register')}
-            className="text-sm font-medium px-4 py-2 rounded-lg transition-colors hover:opacity-80"
-            style={{ color: 'var(--text-secondary)', backgroundColor: 'transparent' }}>
-            → View Registration Screen
-          </button>
-        </div>
       </div>
     </div>
   );

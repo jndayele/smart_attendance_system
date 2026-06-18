@@ -52,6 +52,9 @@ async function request(endpoint, options = {}, requireAuth = true) {
 }
 
 export const authAPI = {
+  getPublicSettings() {
+    return request('/auth/public-settings', { method: 'GET' }, false);
+  },
   checkSetupStatus() {
     return request('/auth/setup-status', { method: 'GET' }, false);
   },
