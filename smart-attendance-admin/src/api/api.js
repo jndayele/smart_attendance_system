@@ -79,6 +79,53 @@ async function request(path, options = {}, withAuth = false) {
   return data;
 }
 
+/**
+ * Downloads a file from the backend and triggers browser download.
+ * @param {string} path - Endpoint path
+ * @param {string} filename - Fallback filename
+ */
+async function downloadFile(path, filename) {
+  const headers = {};
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    let message = 'Failed to download file.';
+    try {
+      const data = await response.json();
+      message = data.detail || message;
+    } catch (e) {}
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let actualFilename = filename;
+  if (contentDisposition && contentDisposition.includes('filename=')) {
+    const matches = /filename="([^"]+)"/.exec(contentDisposition);
+    if (matches != null && matches[1]) { 
+      actualFilename = matches[1];
+    } else {
+      const fallbackMatches = /filename=([^;]+)/.exec(contentDisposition);
+      if (fallbackMatches != null && fallbackMatches[1]) {
+        actualFilename = fallbackMatches[1];
+      }
+    }
+  }
+
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = actualFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 
 export const authAPI = {
@@ -524,4 +571,38 @@ export const studentsAPI = {
   getLevels() {
     return request('/admin/students/levels', { method: 'GET' }, true);
   },
+};
+
+export const reportsAPI = {
+  getDefaulters() {
+    return request('/admin/reports/defaulters', { method: 'GET' }, true);
+  },
+  sendThresholdWarnings() {
+    return request('/admin/reports/notifications/send-threshold-warnings', { method: 'POST' }, true);
+  },
+  downloadInstitutionReport(format) {
+    const ext = format.toLowerCase();
+    // Use fallback name, server Content-Disposition takes precedence
+    return downloadFile(`/admin/reports/institution/${ext}`, `institution_attendance.${ext === 'excel' ? 'xlsx' : ext}`);
+  },
+  downloadDepartmentReport(id, format) {
+    const ext = format.toLowerCase();
+    return downloadFile(`/admin/reports/department/${id}/${ext}`, `department_attendance.${ext === 'excel' ? 'xlsx' : ext}`);
+  },
+  downloadCourseReport(id, format) {
+    const ext = format.toLowerCase();
+    return downloadFile(`/admin/reports/course/${id}/${ext}`, `course_attendance.${ext === 'excel' ? 'xlsx' : ext}`);
+  },
+  downloadStudentReport(id, format) {
+    const ext = format.toLowerCase(); // only pdf is supported for student
+    return downloadFile(`/admin/reports/student/${id}/${ext}`, `student_report.${ext}`);
+  },
+  downloadDefaultersReport(format) {
+    const ext = format.toLowerCase();
+    return downloadFile(`/admin/reports/defaulters/${ext}`, `defaulters.${ext === 'excel' ? 'xlsx' : ext}`);
+  },
+  downloadLecturerActivityReport(format) {
+    const ext = format.toLowerCase();
+    return downloadFile(`/admin/reports/lecturers/activity/${ext}`, `lecturer_activity.${ext === 'excel' ? 'xlsx' : ext}`);
+  }
 };
