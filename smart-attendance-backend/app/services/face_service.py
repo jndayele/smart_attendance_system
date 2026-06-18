@@ -128,48 +128,59 @@ class FaceService:
         """
         Validate image requirements (resolution, single face, etc).
         Returns: { "valid": bool, "error": str | None }
+
+        FIX: previous version had a broad except that silently returned valid=True
+        on unexpected errors. Now defaults to valid=False on any unhandled exception.
         """
         try:
             img = FaceService._bytes_to_image(image_bytes)
-            
-            # Check resolution
-            height, width = img.shape[:2]
-            if height < 300 or width < 300:
-                return {"valid": False, "error": f"Image resolution too low ({width}x{height}). Minimum required is 300x300."}
-                
-            # Use OpenCV Haar Cascades for a quick face check before heavy DeepFace processing
-            # Or just use DeepFace represent to ensure exactly one face is detectable
-            
-            try:
-                # Use mtcnn for a robust face check to catch peripheral faces
-                results = DeepFace.extract_faces(
-                    img_path=img,
-                    detector_backend="mtcnn",
-                    enforce_detection=True
-                )
-                
-                if len(results) == 0:
-                    return {"valid": False, "error": "No face detected in the image."}
-                elif len(results) > 1:
-                    return {"valid": False, "error": "Multiple faces detected. Please provide an image with exactly one face."}
-                    
-                # Additional checks could be added here (brightness, size relative to frame, etc.)
-                face_area = results[0]["facial_area"]
-                face_width = face_area["w"]
-                face_height = face_area["h"]
-                
-                if face_width < 100 or face_height < 100:
-                    return {"valid": False, "error": "Face is too small in the frame. Please get closer to the camera."}
-                    
-                return {"valid": True, "error": None}
-                
-            except ValueError as e:
-                if "Face could not be detected" in str(e):
-                    return {"valid": False, "error": "No face detected in the image."}
-                return {"valid": False, "error": str(e)}
-                
         except Exception as e:
-            return {"valid": False, "error": f"Failed to process image: {str(e)}"}
+            return {"valid": False, "error": f"Could not read image: {str(e)}"}
+
+        # Check resolution
+        height, width = img.shape[:2]
+        if height < 300 or width < 300:
+            return {
+                "valid": False,
+                "error": f"Image resolution too low ({width}x{height}). Minimum required is 300x300."
+            }
+
+        try:
+            results = DeepFace.extract_faces(
+                img_path=img,
+                detector_backend="mtcnn",
+                enforce_detection=True
+            )
+        except ValueError as e:
+            msg = str(e)
+            if "Face could not be detected" in msg or "face" in msg.lower():
+                return {"valid": False, "error": "No face detected in the image."}
+            # Any other ValueError from DeepFace is still a validation failure
+            return {"valid": False, "error": f"Face validation failed: {msg}"}
+        except Exception as e:
+            # FIX: was returning {"valid": True} here — changed to False
+            return {"valid": False, "error": f"Face processing error: {str(e)}"}
+
+        if len(results) == 0:
+            return {"valid": False, "error": "No face detected in the image."}
+
+        if len(results) > 1:
+            return {
+                "valid": False,
+                "error": "Multiple faces detected. Please provide an image with exactly one face."
+            }
+
+        face_area = results[0].get("facial_area", {})
+        face_width = face_area.get("w", 0)
+        face_height = face_area.get("h", 0)
+
+        if face_width < 100 or face_height < 100:
+            return {
+                "valid": False,
+                "error": "Face is too small in the frame. Please get closer to the camera."
+            }
+
+        return {"valid": True, "error": None}
 
     @staticmethod
     def compute_sessions_needed(

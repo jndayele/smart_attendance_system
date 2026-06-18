@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import List, Optional
 from uuid import UUID
 
@@ -59,13 +59,17 @@ class StudentActivityItem(BaseModel):
     is_manual_override: bool
 
 
+# FIX: course_id was required but dashboard never had it in some code paths.
+# Made optional with a default so existing callers that omit it don't crash.
+# Also added day_of_week and scheduled_time as proper fields.
 class UpcomingClass(BaseModel):
-    course_id: UUID
+    course_id: Optional[UUID] = None
     course_title: str
     course_code: str
     lecturer_name: str
-    day_of_week: str
-    scheduled_time: Optional[str] = None
+    day_of_week: Optional[str] = None
+    time_until: Optional[str] = None      # human-readable e.g. "In 2 days at 09:00"
+    scheduled_time: Optional[str] = None  # "HH:MM"
     room: Optional[str] = None
 
 
@@ -137,6 +141,7 @@ class SessionCodeAttemptResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 from app.schemas.attendance import AttendanceRecordResponse  # noqa: E402
+
 
 class AttendanceTrendPoint(BaseModel):
     session_number: int
@@ -217,9 +222,11 @@ class FacePhotoUpdateResponse(BaseModel):
     updated_at: datetime
 
 
+# FIX: added missing alert_below_70 field that was in defaults dict but not the schema
 class StudentNotificationPreferences(BaseModel):
-    alert_below_80: bool
-    alert_below_75: bool
-    session_started_alert: bool
-    session_ending_soon: bool
-    weekly_summary: bool
+    alert_below_80: bool = True
+    alert_below_75: bool = True
+    alert_below_70: bool = True
+    session_started_alert: bool = True
+    session_ending_soon: bool = True
+    weekly_summary: bool = False
