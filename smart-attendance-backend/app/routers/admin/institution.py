@@ -235,18 +235,57 @@ async def get_audit_trail(
 
 @router.get("/dashboard/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    from app.models.student import Student
+    from app.models.student import Student, StudentCourse
     from app.models.lecturer import Lecturer
     from app.models.course import Course
     from app.models.department import Department
     from app.models.session import Session
-    from datetime import date
+    from app.models.attendance import AttendanceRecord
+    from datetime import date, timedelta
+    from sqlalchemy import cast, Float
     
-    s_cnt = await db.execute(select(func.count(Student.id)))
-    l_cnt = await db.execute(select(func.count(Lecturer.id)))
-    c_cnt = await db.execute(select(func.count(Course.id)).filter(Course.is_active == True))
-    d_cnt = await db.execute(select(func.count(Department.id)).filter(Department.is_active == True))
-    sess_cnt = await db.execute(select(func.count(Session.id)).filter(Session.session_date == date.today()))
+    s_cnt = await db.scalar(select(func.count(Student.id))) or 0
+    l_cnt = await db.scalar(select(func.count(Lecturer.id))) or 0
+    c_cnt = await db.scalar(select(func.count(Course.id)).filter(Course.is_active == True)) or 0
+    d_cnt = await db.scalar(select(func.count(Department.id)).filter(Department.is_active == True)) or 0
+    sess_cnt = await db.scalar(select(func.count(Session.id)).filter(Session.session_date == date.today())) or 0
+    
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    yesterday = date.today() - timedelta(days=1)
+    
+    s_week = await db.scalar(select(func.count(Student.id)).where(Student.created_at >= week_ago)) or 0
+    l_week = await db.scalar(select(func.count(Lecturer.id)).where(Lecturer.created_at >= week_ago)) or 0
+    sess_yesterday = await db.scalar(select(func.count(Session.id)).filter(Session.session_date == yesterday)) or 0
+    
+    students_trend = f"+{s_week} this week" if s_week > 0 else "no change"
+    lecturers_trend = f"+{l_week} this week" if l_week > 0 else "no change"
+    
+    if sess_cnt > sess_yesterday:
+        sessions_trend = f"+{sess_cnt - sess_yesterday} today"
+    elif sess_cnt < sess_yesterday:
+        sessions_trend = f"{sess_cnt - sess_yesterday} today"
+    else:
+        sessions_trend = "same as yesterday"
+
+    subq = (
+        select(
+            StudentCourse.id,
+            (
+                cast(func.sum(case((AttendanceRecord.status == "present", 1), else_=0)), Float) 
+                / func.nullif(cast(func.count(func.distinct(Session.id)), Float), 0) 
+                * 100
+            ).label('att_pct'),
+            Course.threshold_pct
+        )
+        .join(Course, Course.id == StudentCourse.course_id)
+        .join(Session, Session.course_id == Course.id)
+        .outerjoin(AttendanceRecord, (AttendanceRecord.session_id == Session.id) & (AttendanceRecord.student_id == StudentCourse.student_id))
+        .group_by(StudentCourse.id, Course.threshold_pct)
+    ).subquery()
+
+    below_threshold_cnt = await db.scalar(
+        select(func.count(subq.c.id)).where(subq.c.att_pct < subq.c.threshold_pct)
+    ) or 0
     
     audit_res = await db.execute(select(AuditLog).order_by(desc(AuditLog.created_at)).limit(10))
     recent = audit_res.scalars().all()
@@ -257,12 +296,16 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     } for a in recent]
     
     return DashboardStatsResponse(
-        total_students=s_cnt.scalar() or 0,
-        total_lecturers=l_cnt.scalar() or 0,
-        active_courses=c_cnt.scalar() or 0,
-        total_departments=d_cnt.scalar() or 0,
-        sessions_today=sess_cnt.scalar() or 0,
-        students_below_threshold=0,
+        total_students=s_cnt,
+        total_lecturers=l_cnt,
+        active_courses=c_cnt,
+        total_departments=d_cnt,
+        sessions_today=sess_cnt,
+        students_below_threshold=below_threshold_cnt,
+        total_students_trend=students_trend,
+        total_lecturers_trend=lecturers_trend,
+        sessions_today_trend=sessions_trend,
+        students_below_threshold_trend="updated today",
         recent_activity=activity,
         quick_actions=[
             {"label": "Add Lecturer", "action": "add_lecturer", "path": "/admin/lecturers/new"},
@@ -290,8 +333,16 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
                 AttendanceRecord.status == "present"
             )
         )
+        sessions_count = await db.scalar(
+            select(func.count(func.distinct(Session.id)))
+            .where(Session.session_date.between(week_start, week_end))
+        )
         pct = round((present / total * 100) if total else 0, 1)
-        weeks.append({"week": f"Week {8-i}", "attendance_pct": pct})
+        weeks.append({
+            "week": f"Week {8-i}", 
+            "attendance_pct": pct,
+            "sessions_count": sessions_count or 0
+        })
         
     from app.models.department import Department
     from app.models.programme import Programme
@@ -328,11 +379,15 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
     for c_title, c_code, p_name, c_tot, c_pres in lowest_res.all():
         if c_tot and c_tot > 0:
             c_pct = round((c_pres / c_tot * 100), 1)
+            
+            # Use 'Warning' if < 75, else 'Approaching'
+            status = 'Warning' if c_pct < 75 else 'Approaching'
+            
             lowest_data.append({
-                "course_title": c_title,
-                "course_code": c_code,
+                "course": f"{c_code} \u2014 {c_title}",
                 "programme": p_name,
-                "avg_pct": c_pct
+                "rate": c_pct,
+                "status": status
             })
             
     lowest_data.sort(key=lambda x: x["avg_pct"])

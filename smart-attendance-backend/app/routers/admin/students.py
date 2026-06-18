@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, update, or_
+from sqlalchemy import func, update, or_, delete
 from sqlalchemy.orm import selectinload
 import uuid
 
@@ -599,6 +599,10 @@ async def delete_student(
         # Hard delete
         stu_id_for_log = stu.id
         stu_name_for_log = stu.name
+        
+        if user:
+            await db.execute(delete(Notification).where(Notification.user_id == user.id))
+            
         await db.delete(stu)
         if user:
             await db.delete(user)

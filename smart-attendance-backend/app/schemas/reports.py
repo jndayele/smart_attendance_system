@@ -28,6 +28,10 @@ class DashboardStatsResponse(BaseModel):
     total_departments: int
     sessions_today: int
     students_below_threshold: int
+    total_students_trend: str = "no change"
+    total_lecturers_trend: str = "no change"
+    sessions_today_trend: str = "no change"
+    students_below_threshold_trend: str = "no change"
     recent_activity: List[ActivityItem]
     quick_actions: List[dict] = []
 

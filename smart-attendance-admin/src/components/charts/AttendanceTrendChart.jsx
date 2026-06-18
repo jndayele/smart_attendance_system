@@ -1,17 +1,6 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-const data = [
-  { week: 'Wk 1', attendance: 82, sessions: 12 },
-  { week: 'Wk 2', attendance: 78, sessions: 14 },
-  { week: 'Wk 3', attendance: 85, sessions: 15 },
-  { week: 'Wk 4', attendance: 80, sessions: 13 },
-  { week: 'Wk 5', attendance: 88, sessions: 16 },
-  { week: 'Wk 6', attendance: 84, sessions: 14 },
-  { week: 'Wk 7', attendance: 90, sessions: 17 },
-  { week: 'Wk 8', attendance: 87, sessions: 15 },
-];
-
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -26,15 +15,34 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-export default function AttendanceTrendChart() {
+export default function AttendanceTrendChart({ data = [] }) {
+  // Transform backend data (week, attendance_pct) to chart format
+  const chartData = data.map((d, i) => ({
+    week: d.week || `Week ${i + 1}`,
+    attendance: d.attendance_pct || 0,
+    sessions: d.sessions_count || 0,
+  }));
+
+  // If no data, show empty state
+  if (chartData.length === 0) {
+    return (
+      <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+        <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Weekly Attendance Trend</h3>
+        <div className="flex items-center justify-center h-64" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm">No attendance data available</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
       <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Weekly Attendance Trend</h3>
       <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data}>
+        <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
           <XAxis dataKey="week" tick={{ fill: '#4A5C80', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis yAxisId="left" tick={{ fill: '#4A5C80', fontSize: 11 }} axisLine={false} tickLine={false} domain={[60, 100]} />
+          <YAxis yAxisId="left" tick={{ fill: '#4A5C80', fontSize: 11 }} axisLine={false} tickLine={false} domain={[0, 100]} />
           <YAxis yAxisId="right" orientation="right" tick={{ fill: '#4A5C80', fontSize: 11 }} axisLine={false} tickLine={false} />
           <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ fontSize: 12, color: '#8B9DC3' }} />

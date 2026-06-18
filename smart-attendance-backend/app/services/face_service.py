@@ -28,11 +28,11 @@ class FaceService:
         img = FaceService._bytes_to_image(image_bytes)
         
         try:
-            # We enforce detection to ensure a face is present
+            # We use mtcnn for reliable multi-face detection instead of opencv
             results = DeepFace.represent(
                 img_path=img,
                 model_name=settings.FACE_MODEL,
-                detector_backend=settings.FACE_DETECTOR,
+                detector_backend="mtcnn",
                 enforce_detection=True
             )
             
@@ -141,9 +141,10 @@ class FaceService:
             # Or just use DeepFace represent to ensure exactly one face is detectable
             
             try:
+                # Use mtcnn for a robust face check to catch peripheral faces
                 results = DeepFace.extract_faces(
                     img_path=img,
-                    detector_backend=settings.FACE_DETECTOR,
+                    detector_backend="mtcnn",
                     enforce_detection=True
                 )
                 
@@ -281,3 +282,29 @@ class FaceService:
             if "Face could not be detected" in str(e):
                 raise ValueError("No face detected in the live image.")
             raise e
+
+    @classmethod
+    async def check_duplicate_face(cls, db, live_encoding: List[float], exclude_student_id=None) -> None:
+        """
+        Queries all existing face encodings and ensures this face isn't already registered.
+        Raises ValueError if a duplicate is found.
+        """
+        from app.models.student import Student
+        from sqlalchemy.future import select
+        
+        query = select(Student.id, Student.name, Student.face_encoding).where(Student.face_registered == True)
+        if exclude_student_id:
+            query = query.where(Student.id != exclude_student_id)
+            
+        result = await db.execute(query)
+        students = result.all()
+        
+        threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
+        
+        for st_id, st_name, stored_encoding in students:
+            if not stored_encoding:
+                continue
+            distance = cls._cosine_distance(live_encoding, stored_encoding)
+            if distance <= threshold_distance:
+                raise ValueError(f"Face is already registered to another student ({st_name}).")
+

@@ -6,31 +6,12 @@ import StatCard from '@/components/ui-custom/StatCards';
 import AttendanceTrendChart from '@/components/charts/AttendanceTrendChart';
 import PresentAbsentDonut from '@/components/charts/PresentAbsentDonut';
 import DeptBarChart from '@/components/charts/DeptBarChart';
-import { academicYearsAPI } from '@/api/api';
+import { academicYearsAPI, institutionAPI } from '@/api/api';
 import {
   Users, UserCheck, BookOpen, Building2, Clock, AlertTriangle,
   Plus, BarChart3, UserPlus, FileText, Zap, CheckCircle, Calendar, X
 } from 'lucide-react';
 import StatCards from '@/components/ui-custom/StatCards';
-
-const activityFeed = [
-  { type: 'student_registered', text: 'Kwame Asante registered via face enrollment', time: '2 min ago', color: '#10B981' },
-  { type: 'session_started', text: 'CS301 attendance session started by Dr. Ama Owusu', time: '15 min ago', color: 'var(--accent-primary)' },
-  { type: 'threshold_alert', text: 'Kweku Boateng fell below 60% in CS401', time: '1 hr ago', color: '#EF4444' },
-  { type: 'report_exported', text: 'Department attendance report exported as PDF', time: '2 hrs ago', color: '#3B82F6' },
-  { type: 'lecturer_added', text: 'Dr. Kweku Boateng added to Computer Science', time: '3 hrs ago', color: '#8B5CF6' },
-  { type: 'session_started', text: 'EE201 attendance session started by Dr. Kofi Asante', time: '4 hrs ago', color: 'var(--accent-primary)' },
-  { type: 'student_registered', text: 'Ama Boateng completed face registration', time: '5 hrs ago', color: '#10B981' },
-  { type: 'threshold_alert', text: 'Adwoa Asiedu approaching threshold in BA201', time: '6 hrs ago', color: '#EF4444' },
-];
-
-const lowCourses = [
-  { course: 'PH301 — Organic Chemistry', programme: 'BSc Pharmacy', rate: 68, status: 'Warning' },
-  { course: 'BA201 — Marketing Mgmt', programme: 'BBA Business Admin', rate: 71, status: 'Warning' },
-  { course: 'EE201 — Digital Circuits', programme: 'BSc Elec. Engineering', rate: 74, status: 'Warning' },
-  { course: 'CS401 — Algorithms', programme: 'BSc Computer Science', rate: 76, status: 'Approaching' },
-  { course: 'CE301 — Fluid Mechanics', programme: 'BSc Civil Engineering', rate: 78, status: 'Approaching' },
-];
 
 const quickActions = [
   { label: 'Add Lecturer', desc: 'Invite a new lecturer', icon: UserPlus, path: '/lecturers', action: 'addLecturer' },
@@ -43,16 +24,38 @@ export default function DashboardPage() {
   const { config } = useAppConfig();
   const navigate = useNavigate();
   const [showAcadBanner, setShowAcadBanner] = useState(false);
+  
+  const [stats, setStats] = useState(null);
+  const [charts, setCharts] = useState(null);
+
+  const fetchDashboardData = async () => {
+    try {
+      const [statsData, chartsData] = await Promise.all([
+        institutionAPI.getDashboardStats(),
+        institutionAPI.getDashboardCharts()
+      ]);
+      setStats(statsData);
+      setCharts(chartsData);
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+    }
+  };
 
   useEffect(() => {
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 60000); // 1 minute polling
+
     // Check if an academic year has been set up
     const dismissed = sessionStorage.getItem('acad_banner_dismissed');
-    if (dismissed) return;
-    academicYearsAPI.list().then(res => {
-      if (!res.academic_years || res.academic_years.length === 0) {
-        setShowAcadBanner(true);
-      }
-    }).catch(() => {});
+    if (!dismissed) {
+      academicYearsAPI.list().then(res => {
+        if (!res.academic_years || res.academic_years.length === 0) {
+          setShowAcadBanner(true);
+        }
+      }).catch(() => {});
+    }
+
+    return () => clearInterval(interval);
   }, []);
 
   const dismissBanner = () => {
@@ -97,7 +100,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {greeting}, {config.adminName || 'Admin'}
+            {greeting}, {config.userName || 'Admin'}
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             {today} · {config.institutionName}
@@ -106,25 +109,25 @@ export default function DashboardPage() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-          <StatCard label="Total Students" value="1,247" trend="+4 this week" trendUp={true} icon={Users} borderColor="var(--accent-primary)" />
-          <StatCard label="Total Lecturers" value="48" trend="+1 this week" trendUp={true} icon={UserCheck} borderColor="#3B82F6" />
-          <StatCard label="Active Courses" value="32" trend="no change" icon={BookOpen} borderColor="#10B981" />
-          <StatCard label="Departments" value="5" trend="no change" icon={Building2} borderColor="#8B5CF6" />
-          <StatCard label="Sessions Today" value="7" trend="+2 today" trendUp={true} icon={Clock} borderColor="var(--accent-primary)" />
-          <StatCard label="Below Threshold" value="63" trend="-3 this week" trendUp={false} icon={AlertTriangle} borderColor="#EF4444" />
+          <StatCard label="Total Students" value={stats?.total_students || 0} trend={stats?.total_students_trend} trendUp={stats?.total_students_trend?.includes('+')} icon={Users} borderColor="var(--accent-primary)" />
+          <StatCard label="Total Lecturers" value={stats?.total_lecturers || 0} trend={stats?.total_lecturers_trend} trendUp={stats?.total_lecturers_trend?.includes('+')} icon={UserCheck} borderColor="#3B82F6" />
+          <StatCard label="Active Courses" value={stats?.active_courses || 0} trend="no change" icon={BookOpen} borderColor="#10B981" />
+          <StatCard label="Departments" value={stats?.total_departments || 0} trend="no change" icon={Building2} borderColor="#8B5CF6" />
+          <StatCard label="Sessions Today" value={stats?.sessions_today || 0} trend={stats?.sessions_today_trend} trendUp={stats?.sessions_today_trend?.includes('+')} icon={Clock} borderColor="var(--accent-primary)" />
+          <StatCard label="Below Threshold" value={stats?.students_below_threshold || 0} trend={stats?.students_below_threshold_trend} trendUp={false} icon={AlertTriangle} borderColor="#EF4444" />
         </div>
 
         {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           <div className="lg:col-span-2">
-            <AttendanceTrendChart />
+            <AttendanceTrendChart data={charts?.weekly_attendance_trend || []} />
           </div>
-          <PresentAbsentDonut />
+          <PresentAbsentDonut present={charts?.present_absent_today?.present || 0} absent={charts?.present_absent_today?.absent || 0} />
         </div>
 
         {/* Dept bar + Low courses */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <DeptBarChart />
+          <DeptBarChart data={charts?.attendance_by_department || []} />
           <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Top 5 Courses with Lowest Attendance</h3>
             <div className="overflow-x-auto">
@@ -137,7 +140,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lowCourses.map((c, i) => (
+                  {(charts?.lowest_attendance_courses || []).slice(0, 5).map((c, i) => (
                     <tr key={i} className="transition-colors hover:bg-white/[0.02]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td className="py-2.5 pr-4 text-sm" style={{ color: 'var(--text-primary)' }}>{c.course}</td>
                       <td className="py-2.5 pr-4 text-xs" style={{ color: 'var(--text-secondary)' }}>{c.programme}</td>
@@ -153,6 +156,11 @@ export default function DashboardPage() {
                       </td>
                     </tr>
                   ))}
+                  {(!charts?.lowest_attendance_courses || charts.lowest_attendance_courses.length === 0) && (
+                    <tr>
+                      <td colSpan="4" className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>No courses below threshold</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -165,15 +173,28 @@ export default function DashboardPage() {
           <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Recent Activity</h3>
             <div className="space-y-3">
-              {activityFeed.map((a, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
-                  <div className="flex-1">
-                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{a.text}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{a.time}</p>
+              {(stats?.recent_activity || []).map((a, i) => {
+                let color = '#3B82F6';
+                if (a.action.includes('start') || a.action.includes('create')) color = '#10B981';
+                else if (a.action.includes('delete') || a.action.includes('alert')) color = '#EF4444';
+                else if (a.action.includes('update')) color = 'var(--accent-primary)';
+                
+                const date = new Date(a.created_at);
+                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                return (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    <div className="flex-1">
+                      <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{a.details?.message || a.action.replace(/_/g, ' ')}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{timeStr}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+              {(!stats?.recent_activity || stats.recent_activity.length === 0) && (
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No recent activity</p>
+              )}
             </div>
           </div>
 

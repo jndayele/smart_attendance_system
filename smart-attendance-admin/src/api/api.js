@@ -166,6 +166,24 @@ export const institutionAPI = {
   get() {
     return request('/admin/institution/', { method: 'GET' }, true);
   },
+
+  /**
+   * Get dashboard statistics
+   * GET /admin/institution/dashboard/stats
+   * Returns: DashboardStatsResponse
+   */
+  getDashboardStats() {
+    return request('/admin/institution/dashboard/stats', { method: 'GET' }, true);
+  },
+
+  /**
+   * Get dashboard charts data
+   * GET /admin/institution/dashboard/charts
+   * Returns: { weekly_attendance_trend, attendance_by_department, present_absent_today, lowest_attendance_courses }
+   */
+  getDashboardCharts() {
+    return request('/admin/institution/dashboard/charts', { method: 'GET' }, true);
+  },
 };
 
 // ─── Admin API ────────────────────────────────────────────────────────────────

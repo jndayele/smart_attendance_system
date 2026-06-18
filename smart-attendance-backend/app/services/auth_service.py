@@ -183,6 +183,7 @@ class AuthService:
 
         try:
             encoding = FaceService.extract_face_encoding(image_bytes)
+            await FaceService.check_duplicate_face(db, encoding)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 

@@ -1,11 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
-const data = [
-  { name: 'Present', value: 847, color: '#10B981' },
-  { name: 'Absent', value: 134, color: '#EF4444' },
-];
-
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -17,8 +12,24 @@ const CustomTooltip = ({ active, payload }) => {
   );
 };
 
-export default function PresentAbsentDonut() {
-  const total = data.reduce((s, d) => s + d.value, 0);
+export default function PresentAbsentDonut({ present = 0, absent = 0 }) {
+  const data = [
+    { name: 'Present', value: present, color: '#10B981' },
+    { name: 'Absent', value: absent, color: '#EF4444' },
+  ];
+  const total = present + absent;
+
+  // If no data, show empty state
+  if (total === 0) {
+    return (
+      <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+        <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Present vs Absent Today</h3>
+        <div className="flex items-center justify-center h-56" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-sm">No attendance data for today</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>

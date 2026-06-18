@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, delete
 from sqlalchemy.orm import selectinload
 import uuid
 
@@ -430,6 +430,11 @@ async def delete_lecturer(
     user = await db.get(User, lec.user_id)
     lec_name = lec.name
     lec_uuid = lec.id
+    
+    if user:
+        from app.models.notification import Notification
+        await db.execute(delete(Notification).where(Notification.user_id == user.id))
+        
     await db.delete(lec)
     if user:
         await db.delete(user)
