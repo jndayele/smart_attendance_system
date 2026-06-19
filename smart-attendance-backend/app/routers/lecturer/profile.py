@@ -27,7 +27,9 @@ from app.schemas.lecturer import (
     LecturerResponse,
     LecturerPasswordChange,
     NotificationListResponse,
-    NotificationResponse
+    NotificationResponse,
+    LecturerPreferencesUpdate,
+    LecturerNotificationPreferencesUpdate
 )
 from app.utils.security import verify_password, hash_password
 from app.services.notification_service import NotificationService
@@ -84,7 +86,12 @@ async def get_profile(
         "is_verified": current_user.is_verified,
         "course_count": course_count,
         "session_count": session_count,
+        "total_students": total_students,
         "last_login": current_user.last_login,
+        "last_login_device": current_user.last_login_device,
+        "last_login_location": current_user.last_login_location,
+        "preferences": current_user.preferences,
+        "notification_preferences": current_user.notification_preferences,
         "courses": [], # We can leave these empty for detail view unless requested
         "recent_sessions": []
     })
@@ -104,13 +111,12 @@ async def update_profile(
     if not lec:
         raise HTTPException(status_code=404, detail="Lecturer profile not found")
 
-    if data.name is not None:
-        lec.name = data.name
-    if data.phone is not None:
-        lec.phone = data.phone
-
-    await db.commit()
-    await db.refresh(lec)
+    # Profile updates not allowed directly based on requirements, but keep method for schema conformity
+    # If data.name is not None: lec.name = data.name
+    # If data.phone is not None: lec.phone = data.phone
+    
+    # We just return the current profile
+    pass
 
     await NotificationService.log_audit_action(current_user.id, "lecturer_profile_updated", "lecturer", lec.id, None, None, db)
 
@@ -126,7 +132,12 @@ async def update_profile(
         "is_verified": current_user.is_verified,
         "course_count": 0, # Ignored for generic response
         "session_count": 0,
-        "last_login": current_user.last_login
+        "total_students": 0,
+        "last_login": current_user.last_login,
+        "last_login_device": current_user.last_login_device,
+        "last_login_location": current_user.last_login_location,
+        "preferences": current_user.preferences,
+        "notification_preferences": current_user.notification_preferences,
     })
     return LecturerResponse(**l_dict)
 
@@ -266,25 +277,67 @@ async def get_notification_preferences(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns the lecturer's notification preference settings."""
-    # Assuming stored in a hypothetical JSON field or external table.
-    # For now, returning defaults since the PRD leaves exact storage ambiguous.
-    return {
-        "alert_student_below_threshold": True,
-        "session_not_closed_reminder": True,
-        "weekly_summary": True,
-        "new_student_enrolled": True
-    }
+    return current_user.notification_preferences
 
 
 @router.patch("/notification-preferences", summary="Update Notification Preferences")
 async def update_notification_preferences(
-    prefs: dict,
+    prefs: LecturerNotificationPreferencesUpdate,
     current_user: User = Depends(require_lecturer),
     db: AsyncSession = Depends(get_db)
 ):
     """Update notification preferences."""
-    # Dummy update for now
+    current_prefs = current_user.notification_preferences or {}
+    new_prefs = current_prefs.copy()
+    new_prefs.update(prefs.dict())
+    
+    # Needs update statement or manual assignment if it's a JSON field
+    current_user.notification_preferences = new_prefs
+    await db.commit()
+    
     return {
         "message": "Preferences updated",
-        "preferences": prefs
+        "preferences": current_user.notification_preferences
+    }
+
+@router.get("/preferences", summary="Get General Preferences")
+async def get_general_preferences(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns the lecturer's general preferences."""
+    from app.models.institution import Institution
+    from sqlalchemy.future import select
+    from app.config import get_settings
+
+    res = await db.execute(select(Institution).limit(1))
+    inst = res.scalars().first()
+    
+    admin_qr_default = get_settings().QR_DEFAULT_EXPIRY_MINUTES
+    if inst and inst.settings_data:
+        admin_qr_default = inst.settings_data.get("qr_default_expiry_minutes", admin_qr_default)
+
+    return {
+        "preferences": current_user.preferences,
+        "admin_qr_default_mins": admin_qr_default
+    }
+
+
+@router.patch("/preferences", summary="Update General Preferences")
+async def update_general_preferences(
+    prefs: LecturerPreferencesUpdate,
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update general preferences."""
+    current_prefs = current_user.preferences or {}
+    new_prefs = current_prefs.copy()
+    new_prefs.update(prefs.dict())
+    
+    current_user.preferences = new_prefs
+    await db.commit()
+    
+    return {
+        "message": "Preferences updated",
+        "preferences": current_user.preferences
     }

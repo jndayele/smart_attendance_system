@@ -90,10 +90,16 @@ async def run_scheduled_reports():
             await send_weekly_summary_email(admin_email, "Admin", summary_data)
             
         # 6. Lecturer summary email
-        lec_res = await db.execute(select(Lecturer, User.email).join(User, Lecturer.user_id == User.id).where(Lecturer.is_suspended == False))
+        lec_res = await db.execute(select(Lecturer, User).join(User, Lecturer.user_id == User.id).where(Lecturer.is_suspended == False))
         lecturers = lec_res.all()
         
-        for lec, email in lecturers:
+        for lec, user in lecturers:
+            email = user.email
+            prefs = user.preferences or {}
+            
+            if not prefs.get("weekly_summary", False):
+                continue
+                
             lec_courses = [c for c in all_courses if c.lecturer_id == lec.id]
             courses_summary = []
             for c in lec_courses:

@@ -46,19 +46,27 @@ export default function ReportsPage() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [chartsRes, defRes, deptRes, crsRes, stuRes] = await Promise.all([
+
+      // Fetch core data and student pages concurrently
+      const [chartsRes, defRes, deptRes, crsRes, stuPage1, stuPage2] = await Promise.all([
         institutionAPI.getDashboardCharts(),
         reportsAPI.getDefaulters(),
-        departmentsAPI.list(),
+        departmentsAPI.list({ limit: 100 }),
         coursesAPI.list({ limit: 100 }),
-        studentsAPI.list({ limit: 500 }) // Fetching up to 500 for dropdown
+        studentsAPI.list({ page: 1, limit: 100 }),
+        studentsAPI.list({ page: 2, limit: 100 }),
       ]);
-      
+
       setChartsData(chartsRes);
       setDefaulters(defRes.defaulters || []);
       setDepartments(deptRes.departments || []);
       setCourses(crsRes.courses || []);
-      setStudents(stuRes.students || []);
+
+      const allStudents = [
+        ...(stuPage1.students || []),
+        ...(stuPage2.students || []),
+      ];
+      setStudents(allStudents);
     } catch (err) {
       addToast(err.message || 'Failed to load report data', 'error');
     } finally {
@@ -66,7 +74,7 @@ export default function ReportsPage() {
     }
   };
 
-  const handleExport = async (reportTitle, action, format, requiresId, selectedId) => {
+  const handleExport = async (reportTitle, downloadFn, format, requiresId, selectedId) => {
     if (requiresId && !selectedId) {
       addToast(`Please select a ${requiresId} first`, 'warning');
       return;
@@ -75,7 +83,7 @@ export default function ReportsPage() {
     try {
       setDownloadingReport(`${reportTitle}-${format}`);
       addToast(`Generating ${format} report...`, 'info');
-      await action(format);
+      await downloadFn(format, selectedId);
       addToast('Report downloaded successfully', 'success');
     } catch (err) {
       addToast(err.message || 'Failed to download report', 'error');
@@ -100,12 +108,14 @@ export default function ReportsPage() {
 
   const reportCards = [
     { 
+      id: 'institution',
       title: 'Institution-wide Attendance', 
       desc: 'Overall attendance summary across all departments', 
       icon: Building2,
-      action: (format) => reportsAPI.downloadInstitutionReport(format)
+      download: (format) => reportsAPI.downloadInstitutionReport(format)
     },
     { 
+      id: 'department',
       title: 'Per-Department Report', 
       desc: 'Detailed breakdown by department', 
       icon: Building2,
@@ -114,42 +124,46 @@ export default function ReportsPage() {
       onChange: setSelectedDeptId,
       options: departments.map(d => ({ value: d.id, label: d.name })),
       placeholder: 'Select Department...',
-      action: (format) => reportsAPI.downloadDepartmentReport(selectedDeptId, format)
+      download: (format, id) => reportsAPI.downloadDepartmentReport(id, format)
     },
     { 
+      id: 'course',
       title: 'Per-Course Report', 
       desc: 'Attendance data for individual courses', 
       icon: BookOpen,
       requiresId: 'course',
       value: selectedCourseId,
       onChange: setSelectedCourseId,
-      options: courses.map(c => ({ value: c.id, label: `${c.code} - ${c.title}` })),
+      options: courses.map(c => ({ value: c.id, label: `${c.code} — ${c.title}` })),
       placeholder: 'Select Course...',
-      action: (format) => reportsAPI.downloadCourseReport(selectedCourseId, format)
+      download: (format, id) => reportsAPI.downloadCourseReport(id, format)
     },
     { 
+      id: 'student',
       title: 'Per-Student Report', 
       desc: 'Individual student attendance records', 
       icon: UserCheck,
       requiresId: 'student',
       value: selectedStudentId,
       onChange: setSelectedStudentId,
-      options: students.map(s => ({ value: s.id, label: `${s.student_id} - ${s.name}` })),
+      options: students.map(s => ({ value: s.id, label: `${s.student_id} — ${s.name}` })),
       placeholder: 'Select Student...',
-      action: (format) => reportsAPI.downloadStudentReport(selectedStudentId, format),
+      download: (format, id) => reportsAPI.downloadStudentReport(id, format),
       disableExcel: true
     },
     { 
+      id: 'defaulters',
       title: 'Defaulters Report', 
       desc: 'Students below attendance threshold', 
       icon: AlertTriangle,
-      action: (format) => reportsAPI.downloadDefaultersReport(format)
+      download: (format) => reportsAPI.downloadDefaultersReport(format)
     },
     { 
+      id: 'lecturers',
       title: 'Lecturer Activity', 
       desc: 'Session conduct and engagement metrics', 
       icon: Users,
-      action: (format) => reportsAPI.downloadLecturerActivityReport(format)
+      download: (format) => reportsAPI.downloadLecturerActivityReport(format)
     },
   ];
 
@@ -208,7 +222,7 @@ export default function ReportsPage() {
               
               <div className="flex gap-2 mt-auto">
                 <button 
-                  onClick={() => handleExport(r.title, r.action, 'PDF', r.requiresId, r.value)} 
+                  onClick={() => handleExport(r.title, r.download, 'PDF', r.requiresId, r.value)} 
                   disabled={downloadingReport === `${r.title}-PDF`}
                   className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50" 
                   style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}
@@ -217,7 +231,7 @@ export default function ReportsPage() {
                 </button>
                 {!r.disableExcel && (
                   <button 
-                    onClick={() => handleExport(r.title, r.action, 'Excel', r.requiresId, r.value)} 
+                    onClick={() => handleExport(r.title, r.download, 'Excel', r.requiresId, r.value)} 
                     disabled={downloadingReport === `${r.title}-Excel`}
                     className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50" 
                     style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-primary)' }}

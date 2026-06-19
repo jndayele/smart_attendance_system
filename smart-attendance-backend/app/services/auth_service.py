@@ -28,7 +28,8 @@ class AuthService:
         db: AsyncSession,
         email: str,
         password: str,
-        ip_address: Optional[str] = None
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
     ) -> Tuple[str, str, str, Optional[str]]:
         result = await db.execute(select(User).filter(User.email == email))
         user = result.scalars().first()
@@ -56,6 +57,29 @@ class AuthService:
         user.failed_attempts = 0
         user.locked_until = None
         user.last_login = datetime.utcnow()
+        
+        # Parse device from user_agent
+        device_str = "Unknown Device"
+        if user_agent:
+            # Simple parsing
+            os = "Unknown OS"
+            if "Windows NT" in user_agent: os = "Windows"
+            elif "Mac OS X" in user_agent: os = "macOS"
+            elif "Android" in user_agent: os = "Android"
+            elif "iPhone" in user_agent or "iPad" in user_agent: os = "iOS"
+            elif "Linux" in user_agent: os = "Linux"
+            
+            browser = "Unknown Browser"
+            if "Edg" in user_agent: browser = "Edge"
+            elif "Chrome" in user_agent: browser = "Chrome"
+            elif "Safari" in user_agent: browser = "Safari"
+            elif "Firefox" in user_agent: browser = "Firefox"
+            
+            device_str = f"{browser} on {os}"
+            
+        user.last_login_device = device_str
+        user.last_login_location = ip_address or "Unknown IP"
+
         await db.commit()
 
         name = None

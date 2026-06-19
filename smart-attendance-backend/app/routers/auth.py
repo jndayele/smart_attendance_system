@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import re
 from typing import Optional
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -210,10 +210,11 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
     }
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT."""
-    # Note: Request IP might be added if needed
-    access_token, role, user_id, name = await AuthService.login_user(db, request.email, request.password)
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("User-Agent")
+    access_token, role, user_id, name = await AuthService.login_user(db, body.email, body.password, ip_address, user_agent)
     return LoginResponse(
         access_token=access_token,
         role=role,

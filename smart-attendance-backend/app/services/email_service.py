@@ -238,3 +238,52 @@ async def send_admin_welcome_email(to_email: str, admin_name: str, institution_n
     </html>
     """
     await _send_html_email(subject, to_email, html)
+
+async def send_lecturer_attendance_warning_email(
+    to_email: str,
+    lecturer_name: str,
+    student_name: str,
+    student_id: str,
+    course_title: str,
+    course_code: str,
+    current_pct: float,
+    threshold_pct: int
+) -> None:
+    subject = f"Student Below Attendance Threshold — {course_code}"
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif;">
+        <h2>{settings.APP_NAME}</h2>
+        <p>Hi {lecturer_name},</p>
+        <p>This is an automated notification that <strong>{student_name} ({student_id})</strong> has fallen below the attendance threshold for <strong>{course_code} - {course_title}</strong>.</p>
+        <p>Current attendance: <span style="color: #dc3545; font-weight: bold;">{current_pct:.1f}%</span></p>
+        <p>Required threshold: <strong>{threshold_pct}%</strong></p>
+        <hr>
+        <p><small>{settings.APP_NAME} System Notification</small></p>
+    </body>
+    </html>
+    """
+    await _send_html_email(subject, to_email, html)
+
+async def send_new_student_enrolled_email(
+    to_email: str,
+    lecturer_name: str,
+    student_name: str,
+    student_id: str,
+    course_title: str,
+    course_code: str
+) -> None:
+    subject = f"New Student Enrolled in {course_code}"
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif;">
+        <h2>{settings.APP_NAME}</h2>
+        <p>Hi {lecturer_name},</p>
+        <p>A new student, <strong>{student_name} ({student_id})</strong>, has been enrolled in your course: <strong>{course_code} - {course_title}</strong>.</p>
+        <p>They will appear in your next attendance session.</p>
+        <hr>
+        <p><small>{settings.APP_NAME} System Notification</small></p>
+    </body>
+    </html>
+    """
+    await _send_html_email(subject, to_email, html)

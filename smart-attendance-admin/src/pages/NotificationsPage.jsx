@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
 import { useToast } from '@/components/ui-custom/ToastProvider';
-import { AlertTriangle, Bell, Mail, Clock, UserCheck, BarChart3, Send, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Bell, Mail, Clock, UserCheck, BarChart3, Send, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { institutionAPI } from '@/api/api';
 
-const alertRules = [
-  { id: 1, title: 'Student Below 80% Threshold', desc: 'Sends a warning email to the student', icon: AlertTriangle, color: '#F59E0B', enabled: true },
-  { id: 2, title: 'Student Below 75% Threshold', desc: 'Notifies student and admin via email', icon: AlertTriangle, color: '#EF4444', enabled: true },
-  { id: 3, title: 'Student Below 70% — Critical', desc: 'Urgent notification to student and admin', icon: AlertTriangle, color: '#EF4444', enabled: true },
-  { id: 4, title: 'Lecturer Inactive 2+ Weeks', desc: 'Alerts admin about inactive lecturers', icon: Clock, color: '#F59E0B', enabled: false },
-  { id: 5, title: 'Expired Student Invitation', desc: 'Notifies admin of expired invites', icon: UserCheck, color: '#3B82F6', enabled: true },
-  { id: 6, title: 'Weekly Attendance Summary', desc: 'Sent to admin and all lecturers', icon: BarChart3, color: '#3B82F6', enabled: true },
-  { id: 7, title: 'Session Not Ended After 2hrs', desc: 'Reminder email to the lecturer', icon: Clock, color: '#F59E0B', enabled: false },
+const alertRulesDef = [
+  { id: 'alert_below_80', title: 'Student Below 80% Threshold', desc: 'Sends a warning email to the student', icon: AlertTriangle, color: '#F59E0B' },
+  { id: 'alert_below_75', title: 'Student Below 75% Threshold', desc: 'Notifies student and admin via email', icon: AlertTriangle, color: '#EF4444' },
+  { id: 'alert_below_70', title: 'Student Below 70% — Critical', desc: 'Urgent notification to student and admin', icon: AlertTriangle, color: '#EF4444' },
+  { id: 'lecturer_inactive_weeks', title: 'Lecturer Inactive 2+ Weeks', desc: 'Alerts admin about inactive lecturers', icon: Clock, color: '#F59E0B' },
+  { id: 'expired_invitation_alert', title: 'Expired Student Invitation', desc: 'Notifies admin of expired invites', icon: UserCheck, color: '#3B82F6' },
+  { id: 'weekly_summary_enabled', title: 'Weekly Attendance Summary', desc: 'Sent to admin and all lecturers', icon: BarChart3, color: '#3B82F6' },
+  { id: 'session_not_ended_hours', title: 'Session Not Ended After 2hrs', desc: 'Reminder email to the lecturer', icon: Clock, color: '#F59E0B' },
 ];
 
 const notifLog = [
@@ -28,13 +29,74 @@ const notifLog = [
 
 export default function NotificationsPage() {
   const { addToast } = useToast();
-  const [rules, setRules] = useState(alertRules);
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [testEmail, setTestEmail] = useState('');
 
-  const toggleRule = (id) => {
-    setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r));
-    addToast('Alert rule updated', 'success');
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      const res = await institutionAPI.getNotificationSettings();
+      // Map API response to local definition
+      const mappedRules = alertRulesDef.map(def => {
+        let isEnabled = false;
+        if (def.id === 'lecturer_inactive_weeks' || def.id === 'session_not_ended_hours') {
+          isEnabled = res[def.id] > 0;
+        } else {
+          isEnabled = !!res[def.id];
+        }
+        return { ...def, enabled: isEnabled };
+      });
+      setRules(mappedRules);
+    } catch (err) {
+      addToast(err.message || 'Failed to load settings', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const toggleRule = async (id) => {
+    const currentRule = rules.find(r => r.id === id);
+    if (!currentRule) return;
+
+    const newEnabled = !currentRule.enabled;
+
+    // Optimistic UI update
+    setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: newEnabled } : r));
+
+    try {
+      const updatePayload = {};
+      if (id === 'lecturer_inactive_weeks') {
+        updatePayload[id] = newEnabled ? 2 : 0; // Default to 2 weeks if enabled
+      } else if (id === 'session_not_ended_hours') {
+        updatePayload[id] = newEnabled ? 2 : 0; // Default to 2 hours if enabled
+      } else {
+        updatePayload[id] = newEnabled;
+      }
+
+      await institutionAPI.updateNotificationSettings(updatePayload);
+      addToast('Alert rule updated', 'success');
+    } catch (err) {
+      // Revert on failure
+      setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: currentRule.enabled } : r));
+      addToast(err.message || 'Failed to update rule', 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <TopHeader title="Notifications & Alerts" breadcrumbs={['Home', 'Notifications']} />
+        <div className="flex-1 flex items-center justify-center py-20" style={{ backgroundColor: 'var(--bg-deep)' }}>
+          <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent-primary)' }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">

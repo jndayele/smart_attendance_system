@@ -43,13 +43,18 @@ class LecturerResponse(BaseModel):
     course_count: int
     session_count: int
     last_login: Optional[datetime] = None
+    last_login_device: Optional[str] = None
+    last_login_location: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    preferences: Optional[dict] = None
+    notification_preferences: Optional[dict] = None
 
     class Config:
         from_attributes = True
 
 class LecturerDetailResponse(LecturerResponse):
+    total_students: int
     courses: List[CourseResponse]
     recent_sessions: List[SessionSummary]
 
@@ -137,9 +142,18 @@ class LecturerCourseDetailResponse(BaseModel):
 
 
 class LecturerProfileUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=255)
-    phone: Optional[str] = None
+    pass # No longer allowing updates to name/phone based on requirements
 
+class LecturerPreferencesUpdate(BaseModel):
+    qr_expiry_mode: str
+    custom_qr_expiry_mins: int
+    date_format: str
+
+class LecturerNotificationPreferencesUpdate(BaseModel):
+    alert_student_below_threshold: bool
+    session_not_closed_reminder: bool
+    weekly_summary: bool
+    new_student_enrolled: bool
 
 class LecturerPasswordChange(BaseModel):
     current_password: str

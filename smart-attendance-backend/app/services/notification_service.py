@@ -12,7 +12,12 @@ from app.models.student import Student, StudentCourse
 from app.models.course import Course
 from app.models.session import Session
 from app.models.attendance import AttendanceRecord
-from app.services.email_service import send_attendance_warning_email, send_weekly_summary_email
+from app.services.email_service import (
+    send_attendance_warning_email, 
+    send_weekly_summary_email,
+    send_lecturer_attendance_warning_email,
+    send_new_student_enrolled_email
+)
 
 class NotificationService:
     @staticmethod
@@ -189,6 +194,24 @@ class NotificationService:
             sessions_needed=needed
         )
 
+        # Notify Lecturer if preference enabled
+        res_lec = await db.execute(select(Lecturer, User).join(User, Lecturer.user_id == User.id).filter(Lecturer.id == course.lecturer_id))
+        lec_row = res_lec.first()
+        if lec_row:
+            lecturer, lec_user = lec_row
+            prefs = lec_user.preferences or {}
+            if prefs.get("alert_student_below_threshold", False):
+                await send_lecturer_attendance_warning_email(
+                    to_email=lec_user.email,
+                    lecturer_name=lecturer.name,
+                    student_name=student.name,
+                    student_id=student.student_id,
+                    course_title=course.title,
+                    course_code=course.code,
+                    current_pct=pct,
+                    threshold_pct=course.threshold_pct
+                )
+
     @staticmethod
     async def send_weekly_summaries(db: AsyncSession) -> None:
         """Called by chron job to send weekly reports."""
@@ -322,14 +345,16 @@ class NotificationService:
             hours_open = (datetime.utcnow() - session.started_at).total_seconds() / 3600.0
             
             # Send email
-            await send_session_not_closed_email(
-                to_email=user.email,
-                lecturer_name=lecturer.name,
-                course_title=course.title,
-                course_code=course.code,
-                session_label=session.label,
-                hours_open=hours_open
-            )
+            prefs = user.preferences or {}
+            if prefs.get("session_not_closed_reminder", False):
+                await send_session_not_closed_email(
+                    to_email=user.email,
+                    lecturer_name=lecturer.name,
+                    course_title=course.title,
+                    course_code=course.code,
+                    session_label=session.label,
+                    hours_open=hours_open
+                )
             
             # Create in-app notification
             label_text = f"'{session.label}' " if session.label else ""
@@ -339,5 +364,33 @@ class NotificationService:
                 title="Session Still Open",
                 message=f"Your session {label_text}for {course.code} has been open for over 2 hours. Please end the session.",
                 db=db
+            )
+
+    @staticmethod
+    async def notify_new_student_enrolled(
+        student: Student,
+        course_id: uuid.UUID,
+        db: AsyncSession
+    ) -> None:
+        """Notifies the lecturer when a new student is enrolled in their course."""
+        res_course = await db.execute(select(Course).filter(Course.id == course_id))
+        course = res_course.scalars().first()
+        if not course: return
+
+        res_lec = await db.execute(select(Lecturer, User).join(User, Lecturer.user_id == User.id).filter(Lecturer.id == course.lecturer_id))
+        lec_row = res_lec.first()
+        if not lec_row: return
+
+        lecturer, user = lec_row
+        prefs = user.preferences or {}
+        
+        if prefs.get("new_student_enrolled", False):
+            await send_new_student_enrolled_email(
+                to_email=user.email,
+                lecturer_name=lecturer.name,
+                student_name=student.name,
+                student_id=student.student_id,
+                course_title=course.title,
+                course_code=course.code
             )
 

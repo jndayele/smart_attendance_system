@@ -67,3 +67,38 @@ export const authAPI = {
     return request('/auth/setup-status', { method: 'GET' });
   }
 };
+
+export const profileAPI = {
+  getProfile() {
+    return request('/lecturer/profile', { method: 'GET' }, true);
+  },
+  
+  changePassword(currentPassword, newPassword) {
+    return request('/lecturer/profile/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }, true);
+  },
+
+  getNotificationPreferences() {
+    return request('/lecturer/profile/notification-preferences', { method: 'GET' }, true);
+  },
+
+  updateNotificationPreferences(prefs) {
+    return request('/lecturer/profile/notification-preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(prefs),
+    }, true);
+  },
+
+  getGeneralPreferences() {
+    return request('/lecturer/profile/preferences', { method: 'GET' }, true);
+  },
+
+  updateGeneralPreferences(prefs) {
+    return request('/lecturer/profile/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(prefs),
+    }, true);
+  }
+};

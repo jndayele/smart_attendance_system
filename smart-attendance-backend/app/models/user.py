@@ -40,5 +40,16 @@ class User(Base):
             "session_not_closed_reminder": True
         }
     )
+    preferences = Column(
+        JSON,
+        nullable=True,
+        default=lambda: {
+            "qr_expiry_mode": "admin_default",
+            "custom_qr_expiry_mins": 5,
+            "date_format": "DD/MM/YYYY"
+        }
+    )
+    last_login_device = Column(String(255), nullable=True)
+    last_login_location = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

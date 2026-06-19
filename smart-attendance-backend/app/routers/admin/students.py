@@ -329,6 +329,10 @@ async def create_student(
                 enrollment_count += 1
                 course_titles.append(course.title)
         await db.commit()
+        
+        for course in courses_to_enroll:
+            await NotificationService.notify_new_student_enrolled(new_stu, course.id, db)
+            
     except Exception as e:
         await db.rollback()
         raise HTTPException(
@@ -1130,6 +1134,9 @@ async def bulk_import_students(
 
             await db.commit()
             await db.refresh(new_stu)
+            
+            for course in enrolled_courses:
+                await NotificationService.notify_new_student_enrolled(new_stu, course.id, db)
 
             invitation_link = f"{settings.STUDENT_FRONTEND_URL}/register-student?token={raw_token}"
             await send_student_invitation_email(

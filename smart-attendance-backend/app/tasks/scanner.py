@@ -44,3 +44,16 @@ async def start_scheduler():
             logger.error(f"Error in scanner: {e}")
         # Run once a day
         await asyncio.sleep(86400)
+
+async def start_hourly_scanner():
+    """Hourly background scheduler for session checks."""
+    while True:
+        try:
+            logger.info("Starting Hourly Session Scanner...")
+            async with AsyncSessionLocal() as db:
+                await NotificationService.notify_session_not_closed(db)
+            logger.info("Hourly Session Scanner completed.")
+        except Exception as e:
+            logger.error(f"Error in hourly scanner: {e}")
+        # Run once an hour
+        await asyncio.sleep(3600)

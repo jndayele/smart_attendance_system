@@ -215,6 +215,96 @@ export const institutionAPI = {
   },
 
   /**
+   * Update institution info and/or logo.
+   * Always uses multipart/form-data because the backend uses Form() + File() params.
+   * @param {{ name?: string, admin_name?: string, admin_email?: string }} fields
+   * @param {File|null} logoFile - optional logo file
+   */
+  updateInstitution(fields = {}, logoFile = null) {
+    const token = getToken();
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const fd = new FormData();
+    if (fields.name) fd.append('name', fields.name);
+    if (fields.admin_name) fd.append('admin_name', fields.admin_name);
+    if (fields.admin_email) fd.append('admin_email', fields.admin_email);
+    if (logoFile) fd.append('logo', logoFile);
+
+    return fetch(`${BASE_URL}/admin/institution/`, {
+      method: 'PATCH',
+      headers,  // DO NOT set Content-Type — browser sets it with boundary automatically
+      body: fd,
+    }).then(async res => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Failed to update institution');
+      return data;
+    });
+  },
+
+  /**
+   * Get system settings
+   * GET /admin/institution/settings
+   */
+  getSettings() {
+    return request('/admin/institution/settings', { method: 'GET' }, true);
+  },
+
+  /**
+   * Update system settings (session config + face config)
+   * PATCH /admin/institution/settings
+   */
+  updateSettings(data) {
+    return request('/admin/institution/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Get notification settings
+   * GET /admin/institution/settings/notifications
+   */
+  getNotificationSettings() {
+    return request('/admin/institution/settings/notifications', { method: 'GET' }, true);
+  },
+
+  /**
+   * Update notification settings
+   * PATCH /admin/institution/settings/notifications
+   */
+  updateNotificationSettings(data) {
+    return request('/admin/institution/settings/notifications', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Change admin password
+   * PATCH /admin/institution/admin/password
+   */
+  changePassword(data) {
+    return request('/admin/institution/admin/password', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  /**
+   * Get audit trail logs
+   * GET /admin/institution/audit-trail
+   */
+  getAuditTrail(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set('page', params.page);
+    if (params.limit) qs.set('limit', params.limit);
+    if (params.action_type) qs.set('action_type', params.action_type);
+    const query = qs.toString() ? `?${qs}` : '';
+    return request(`/admin/institution/audit-trail${query}`, { method: 'GET' }, true);
+  },
+
+  /**
    * Get dashboard statistics
    * GET /admin/institution/dashboard/stats
    * Returns: DashboardStatsResponse
@@ -241,8 +331,13 @@ export const departmentsAPI = {
    * GET /admin/departments/
    * Returns: { departments, total }
    */
-  list() {
-    return request('/admin/departments/', { method: 'GET' }, true);
+  list(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set('page', params.page);
+    if (params.limit) qs.set('limit', params.limit);
+    if (params.search) qs.set('search', params.search);
+    const query = qs.toString() ? `?${qs}` : '';
+    return request(`/admin/departments/${query}`, { method: 'GET' }, true);
   },
 
   /**

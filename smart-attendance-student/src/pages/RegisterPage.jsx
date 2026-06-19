@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { GraduationCap, Lock, Check, Upload, Camera, X, AlertCircle, Loader2 } from 'lucide-react';
+import { GraduationCap, Lock, Check, Camera, X, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useAppConfig } from '../context/AppContext';
 import { useStudentAuth } from '../context/AuthContext';
 import { authAPI, setToken } from '../api/api';
@@ -22,13 +22,13 @@ export default function RegisterPage() {
   const [photoStatus, setPhotoStatus] = useState(null); // null | 'success' | 'error'
   const [photoError, setPhotoError] = useState('');
   
-  const [redirectCountdown, setRedirectCountdown] = useState(3);
-  
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [initialError, setInitialError] = useState('');
-  const [studentData, setStudentData] = useState(null);
-
-  const fileInputRef = useRef(null);
+  // Camera state
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     if (!token) {
@@ -48,6 +48,83 @@ export default function RegisterPage() {
       });
   }, [token]);
 
+  const [redirectCountdown, setRedirectCountdown] = useState(3);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [initialError, setInitialError] = useState('');
+  const [studentData, setStudentData] = useState(null);
+
+  // Auto-open camera on step 2, cleanup on leaving
+  useEffect(() => {
+    if (step === 2 && !photoPreview) {
+      startCamera();
+    }
+    return () => {
+      if (step !== 2) stopCamera();
+    };
+  }, [step]);
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
+  const startCamera = async () => {
+    setCameraError('');
+    setCameraLoading(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch (err) {
+      setCameraError('Could not access camera. Please allow camera access and try again.');
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    // Mirror horizontally since it's a selfie feed
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], 'face_photo.jpg', { type: 'image/jpeg' });
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(blob));
+      setPhotoError('');
+      stopCamera();
+    }, 'image/jpeg', 0.92);
+  };
+
+  const retakePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setPhotoStatus(null);
+    setPhotoError('');
+    startCamera();
+  };
+
   const hasLength = password.length >= 8;
   const hasNumber = /\d/.test(password);
   const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
@@ -57,29 +134,6 @@ export default function RegisterPage() {
   const strength = [hasLength, hasNumber, hasSpecial].filter(Boolean).length;
   const strengthLabel = ['', 'Weak', 'Fair', 'Strong'][strength];
   const strengthColor = ['', '#EF4444', '#F59E0B', '#10B981'][strength];
-
-  const handlePhotoSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError("File size exceeds 5MB limit.");
-      return;
-    }
-    
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
-    setPhotoStatus(null);
-    setPhotoError('');
-  };
-
-  const removePhoto = () => {
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setPhotoStatus(null);
-    setPhotoError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
 
   const handleCompleteRegistration = async () => {
     setPhotoProcessing(true);
@@ -123,7 +177,7 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center gap-2 mb-8">
       {[
         { n: 1, label: 'Set Password' },
-        { n: 2, label: 'Upload Face Photo' },
+        { n: 2, label: 'Capture Face Photo' },
         { n: 3, label: 'Complete' },
       ].map((s, i) => (
         <React.Fragment key={s.n}>
@@ -268,50 +322,80 @@ export default function RegisterPage() {
             </>
           )}
 
-          {/* STEP 2 */}
+          {/* STEP 2 - Camera Capture */}
           {step === 2 && (
             <>
-              <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Upload Your Face Photo</h2>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>This photo will be used to verify your identity during attendance.</p>
+              <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Take Your Face Photo</h2>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Position your face clearly in the frame, then tap the capture button.</p>
 
               <div className="rounded-lg p-4 mb-6 flex items-start gap-3"
                 style={{ backgroundColor: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
                 <Camera size={18} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--accent-blue)' }} />
                 <div className="text-sm space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                  <p>✓ Clear frontal view, no obstructions</p>
+                  <p>✓ Look straight into the camera</p>
                   <p>✓ Good lighting — not too dark or washed out</p>
-                  <p>✓ Only your face visible</p>
-                  <p>✓ Minimum 300×300 pixels</p>
+                  <p>✓ Only your face in the frame, no other people</p>
+                  <p>✓ Remove glasses or hats if possible</p>
                 </div>
               </div>
 
-              <input 
-                type="file" 
-                accept="image/jpeg, image/png, image/webp" 
-                ref={fileInputRef} 
-                onChange={handlePhotoSelect} 
-                className="hidden" 
-              />
-
+              {/* Camera view or preview */}
               {!photoPreview ? (
-                <button onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-12 rounded-xl border-2 border-dashed flex flex-col items-center gap-3 transition-colors hover:opacity-80"
-                  style={{ borderColor: 'var(--border-btn)', backgroundColor: 'transparent' }}>
-                  <Upload size={32} style={{ color: 'var(--text-muted)' }} />
-                  <div className="text-center">
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Click to select your photo</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Accepted: JPG, PNG — Max 5MB</p>
+                <div className="flex flex-col items-center">
+                  <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden mb-4" style={{ backgroundColor: '#000', border: '1px solid var(--border-subtle)' }}>
+                    {cameraLoading && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ color: 'var(--text-muted)' }}>
+                        <Loader2 size={32} className="animate-spin mb-3" style={{ color: 'var(--accent-primary)' }} />
+                        <p className="text-sm">Starting camera...</p>
+                      </div>
+                    )}
+                    {cameraError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                        <AlertCircle size={32} className="mb-3" style={{ color: 'var(--accent-red)' }} />
+                        <p className="text-sm mb-4" style={{ color: 'var(--accent-red)' }}>{cameraError}</p>
+                        <button onClick={startCamera}
+                          className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                          style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+                          <RefreshCw size={14} /> Try Again
+                        </button>
+                      </div>
+                    )}
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover"
+                      style={{ transform: 'scaleX(-1)', display: cameraActive ? 'block' : 'none' }}
+                    />
+                    {/* Face guide overlay */}
+                    {cameraActive && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-40 h-48 rounded-full border-2 border-dashed" style={{ borderColor: 'var(--accent-primary)', opacity: 0.6 }} />
+                      </div>
+                    )}
                   </div>
-                </button>
+                  <canvas ref={canvasRef} className="hidden" />
+                  {cameraActive && (
+                    <button
+                      onClick={capturePhoto}
+                      className="w-16 h-16 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                      style={{ backgroundColor: 'var(--accent-primary)', boxShadow: '0 0 0 4px rgba(255,255,255,0.15), 0 0 0 8px rgba(var(--accent-primary-rgb, 0,200,150),0.15)' }}
+                    >
+                      <Camera size={24} style={{ color: 'var(--bg-deep)' }} />
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="flex flex-col items-center mb-6">
-                  <div className="relative w-48 h-48 rounded-xl overflow-hidden group border" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <img src={photoPreview} alt="Face Preview" className="w-full h-full object-cover" />
-                    <button onClick={removePhoto} disabled={photoProcessing}
-                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0">
-                      <span className="text-sm font-medium text-white flex items-center gap-1"><X size={14} /> Remove</span>
-                    </button>
+                  <div className="relative w-48 h-48 rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <img src={photoPreview} alt="Captured Face" className="w-full h-full object-cover" />
                   </div>
+                  <button onClick={retakePhoto} disabled={photoProcessing}
+                    className="mt-4 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all hover:opacity-80 disabled:opacity-40"
+                    style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                    <RefreshCw size={14} /> Retake Photo
+                  </button>
                 </div>
               )}
 

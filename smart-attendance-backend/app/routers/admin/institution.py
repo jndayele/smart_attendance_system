@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, func, case
-from typing import Dict, Any
+from sqlalchemy.orm.attributes import flag_modified
+from typing import Dict, Any, Optional
 import base64
 from datetime import datetime, timedelta
 
@@ -38,8 +39,10 @@ async def get_institution(db: AsyncSession = Depends(get_db)):
 
 @router.patch("/", response_model=InstitutionResponse)
 async def update_institution(
-    update_data: InstitutionUpdate,
     request: Request,
+    name: Optional[str] = Form(None),
+    admin_name: Optional[str] = Form(None),
+    admin_email: Optional[str] = Form(None),
     logo: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
@@ -49,22 +52,32 @@ async def update_institution(
     if not inst:
         raise HTTPException(status_code=404, detail="Institution not found")
 
-    if update_data.name: inst.name = update_data.name
-    if update_data.admin_email: inst.admin_email = update_data.admin_email
+    changed = {}
+    if name and name.strip():
+        inst.name = name.strip()
+        changed["name"] = name.strip()
+    if admin_name and admin_name.strip():
+        inst.admin_name = admin_name.strip()
+        changed["admin_name"] = admin_name.strip()
+    if admin_email and admin_email.strip():
+        inst.admin_email = admin_email.strip()
+        changed["admin_email"] = admin_email.strip()
     
-    if logo:
+    if logo and logo.filename:
         file_bytes = await logo.read()
         logo_url = await upload_image(file_bytes, folder="institution_logos", public_id=f"institution_{inst.id}")
         inst.logo_url = logo_url
+        changed["logo"] = "updated"
 
     await db.commit()
     await db.refresh(inst)
 
-    await NotificationService.log_audit_action(
-        performed_by=admin.id, action="institution_updated", entity_type="institution", 
-        entity_id=inst.id, details=update_data.model_dump(exclude_unset=True), 
-        ip_address=request.client.host if request.client else None, db=db
-    )
+    if changed:
+        await NotificationService.log_audit_action(
+            performed_by=admin.id, action="institution_updated", entity_type="institution", 
+            entity_id=inst.id, details=changed, 
+            ip_address=request.client.host if request.client else None, db=db
+        )
     return inst
 
 @router.get("/settings")
@@ -97,9 +110,10 @@ async def update_system_settings(
     if not inst:
         raise HTTPException(status_code=404, detail="Institution not found")
         
-    current = inst.settings_data or {}
+    current = dict(inst.settings_data or {})
     current.update(settings_update.model_dump(exclude_unset=True))
     inst.settings_data = current
+    flag_modified(inst, "settings_data")
     await db.commit()
     
     await NotificationService.log_audit_action(
@@ -140,9 +154,10 @@ async def update_notification_settings(
     if not inst:
         raise HTTPException(status_code=404, detail="Institution not found")
         
-    current = inst.notification_settings or {}
+    current = dict(inst.notification_settings or {})
     current.update(settings_update.model_dump(exclude_unset=True))
     inst.notification_settings = current
+    flag_modified(inst, "notification_settings")
     await db.commit()
     
     await NotificationService.log_audit_action(
@@ -164,7 +179,7 @@ async def update_smtp_settings(
     if not inst:
         raise HTTPException(status_code=404, detail="Institution not found")
         
-    current = inst.smtp_settings or {}
+    current = dict(inst.smtp_settings or {})
     update_dict = smtp_update.model_dump(exclude_unset=True)
     if "mail_password" in update_dict and update_dict["mail_password"]:
         # Obfuscating the password
@@ -172,6 +187,7 @@ async def update_smtp_settings(
         
     current.update(update_dict)
     inst.smtp_settings = current
+    flag_modified(inst, "smtp_settings")
     await db.commit()
     
     await NotificationService.log_audit_action(
