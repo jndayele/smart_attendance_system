@@ -126,7 +126,16 @@ class AuthService:
                     name = stu.name
 
             from app.services.email_service import send_password_reset_email
-            reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+            
+            if user.role == RoleEnum.lecturer:
+                base_url = settings.LECTURER_FRONTEND_URL
+            elif user.role == RoleEnum.student:
+                base_url = settings.STUDENT_FRONTEND_URL
+            else:
+                base_url = settings.FRONTEND_URL
+                
+            reset_url = f"{base_url}/reset-password?token={raw_token}"
+            
             import asyncio
             asyncio.create_task(send_password_reset_email(user.email, name, reset_url))
 

@@ -795,7 +795,7 @@ async def resend_invitation(
         if c:
             course_titles.append(c.title)
 
-    invitation_link = f"{settings.FRONTEND_URL}/register-student?token={raw_token}"
+    invitation_link = f"{settings.STUDENT_FRONTEND_URL}/register-student?token={raw_token}"
     await send_student_invitation_email(user.email, stu.name, stu.student_id, course_titles, invitation_link)
 
     await NotificationService.log_audit_action(
@@ -831,7 +831,7 @@ async def reset_student_password(
     user.password_reset_expiry = datetime.utcnow() + timedelta(minutes=30)
     await db.commit()
 
-    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+    reset_link = f"{settings.STUDENT_FRONTEND_URL}/reset-password?token={raw_token}"
     await send_password_reset_email(user.email, stu.name, reset_link)
 
     await NotificationService.log_audit_action(

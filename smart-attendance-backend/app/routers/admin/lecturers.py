@@ -280,6 +280,17 @@ async def get_lecturer(
     )
     session_count = session_count_res.scalar() or 0
 
+    from app.models.student import StudentCourse
+    
+    total_students = 0
+    course_ids = [c.id for c in courses]
+    if course_ids:
+        res_stu = await db.execute(
+            select(func.count(func.distinct(StudentCourse.student_id)))
+            .where(StudentCourse.course_id.in_(course_ids), StudentCourse.is_active == True)
+        )
+        total_students = res_stu.scalar() or 0
+
     dept_name = await get_dept_name(lec.department_id, db)
 
     from app.schemas.course import CourseResponse
@@ -358,7 +369,9 @@ async def get_lecturer(
         is_verified=user.is_verified,
         course_count=len(courses),
         session_count=session_count,
+        total_students=total_students,
         last_login=user.last_login,
+        last_login_device=user.last_login_device,
         created_at=lec.created_at,
         updated_at=lec.updated_at,
         courses=course_responses,
@@ -532,7 +545,7 @@ async def reset_lecturer_password(
     user.password_reset_expiry = datetime.utcnow() + timedelta(minutes=30)
     await db.commit()
 
-    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+    reset_link = f"{settings.LECTURER_FRONTEND_URL}/reset-password?token={raw_token}"
     await send_password_reset_email(user.email, lec.name, reset_link)
 
     await NotificationService.log_audit_action(
