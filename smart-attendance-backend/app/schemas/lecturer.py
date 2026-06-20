@@ -3,6 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from app.schemas.course import CourseResponse
+from app.schemas.session import SessionSummary
 
 class LecturerCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
@@ -16,17 +17,7 @@ class LecturerUpdate(BaseModel):
     phone: Optional[str] = None
     department_id: Optional[UUID] = None
 
-class SessionSummary(BaseModel):
-    id: UUID
-    course_id: UUID
-    course_code: str
-    session_date: datetime
-    label: Optional[str]
-    students_present: int
-    students_absent: int
-    
-    class Config:
-        from_attributes = True
+
 
 class LecturerResponse(BaseModel):
     id: UUID

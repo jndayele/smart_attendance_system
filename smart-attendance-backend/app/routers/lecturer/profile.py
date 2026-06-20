@@ -314,12 +314,16 @@ async def get_general_preferences(
     inst = res.scalars().first()
     
     admin_qr_default = get_settings().QR_DEFAULT_EXPIRY_MINUTES
+    session_code_length = get_settings().SESSION_CODE_LENGTH
+    
     if inst and inst.settings_data:
         admin_qr_default = inst.settings_data.get("qr_default_expiry_minutes", admin_qr_default)
+        session_code_length = inst.settings_data.get("session_code_length", session_code_length)
 
     return {
         "preferences": current_user.preferences,
-        "admin_qr_default_mins": admin_qr_default
+        "admin_qr_default_mins": admin_qr_default,
+        "session_code_length": session_code_length
     }
 
 

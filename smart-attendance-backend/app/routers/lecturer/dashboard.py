@@ -26,8 +26,8 @@ from app.schemas.lecturer import (
     LecturerStats,
     LecturerCourseCard,
     AtRiskStudent,
-    SessionSummary,
 )
+from app.schemas.session import SessionSummary
 
 router = APIRouter(dependencies=[Depends(require_lecturer)])
 

@@ -45,6 +45,7 @@ class LiveSessionAlert(BaseModel):
     qr_expires_at: Optional[datetime] = None
     seconds_remaining: Optional[int] = None
     already_marked: bool
+    code_length: int = 6
 
 
 class StudentActivityItem(BaseModel):
@@ -86,9 +87,20 @@ class StudentDashboardResponse(BaseModel):
     active_semester: Optional[str] = None
     enrolled_courses: List[StudentCourseCard]
     recent_activity: List[StudentActivityItem]
-    upcoming_schedule: List[UpcomingClass]
     live_session: Optional[LiveSessionAlert] = None
     stats: StudentDashboardStats
+
+class CourseTrendPoint(BaseModel):
+    week_label: str
+    attendance_pct: float
+
+class CourseAttendanceTrend(BaseModel):
+    course_code: str
+    course_title: str
+    trend: List[CourseTrendPoint]
+
+class AttendanceTrendResponse(BaseModel):
+    courses: List[CourseAttendanceTrend]
 
 
 # ---------------------------------------------------------------------------

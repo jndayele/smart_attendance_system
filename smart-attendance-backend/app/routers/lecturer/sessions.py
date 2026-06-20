@@ -21,6 +21,7 @@ from app.models.course import Course
 from app.models.session import Session
 from app.models.student import Student, StudentCourse
 from app.models.attendance import AttendanceRecord
+from app.models.institution import Institution
 from app.schemas.session import (
     SessionCreate,
     SessionUpdate,
@@ -81,7 +82,15 @@ async def create_session(
     qr_expires_at = now + timedelta(minutes=qr_expiry)
     
     qr_token = generate_qr_token()
-    session_code = generate_session_code(settings.SESSION_CODE_LENGTH)
+    
+    # Get dynamic session code length from institution settings
+    inst_res = await db.execute(select(Institution).limit(1))
+    inst = inst_res.scalars().first()
+    code_length = settings.SESSION_CODE_LENGTH
+    if inst and inst.settings_data:
+        code_length = inst.settings_data.get("session_code_length", code_length)
+        
+    session_code = generate_session_code(code_length)
 
     new_session = Session(
         course_id=c.id,

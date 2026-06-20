@@ -26,8 +26,7 @@ from app.schemas.student_portal import (
     StudentDashboardStats,
     StudentCourseCard,
     LiveSessionAlert,
-    StudentActivityItem,
-    UpcomingClass
+    StudentActivityItem
 )
 from app.services.face_service import FaceService
 
@@ -192,37 +191,6 @@ async def get_dashboard(
     sem = res_sem.scalars().first()
     sem_name = f"Semester {sem.number}" if sem else None
 
-    # Upcoming Schedule
-    from app.models.class_schedule import ClassSchedule
-    upcoming_schedule = []
-    now = datetime.utcnow()
-    current_day = now.weekday()
-    
-    if course_ids:
-        sched_res = await db.execute(select(ClassSchedule).where(ClassSchedule.course_id.in_(course_ids)))
-        schedules = sched_res.scalars().all()
-        
-        # Build mapping from course_id to course info
-        course_info_map = {c.id: (c.title, c.code, l_name) for c, _, l_name in enrolled_data}
-        
-        for sched in schedules:
-            if sched.course_id in course_info_map:
-                c_title, c_code, l_name = course_info_map[sched.course_id]
-                day_diff = sched.day_of_week - current_day
-                if day_diff < 0: day_diff += 7
-                
-                upcoming_schedule.append(UpcomingClass(
-                    course_title=c_title,
-                    course_code=c_code,
-                    lecturer_name=l_name,
-                    time_until=f"In {day_diff} days at {sched.start_time.strftime('%H:%M')}",
-                    scheduled_time=sched.start_time.strftime('%H:%M'),
-                    room=sched.room or "TBA"
-                ))
-    
-    # Sort by closest day
-    upcoming_schedule.sort(key=lambda x: x.time_until)
-
     stats = StudentDashboardStats(
         total_courses=len(course_cards),
         overall_avg_pct=overall_avg_pct,
@@ -240,7 +208,6 @@ async def get_dashboard(
         active_semester=sem_name,
         enrolled_courses=course_cards,
         recent_activity=recent_activity,
-        upcoming_schedule=upcoming_schedule,
         live_session=live_session_alert,
         stats=stats
     )
@@ -296,25 +263,80 @@ async def get_live_session(
         started_at=s.started_at,
         qr_expires_at=s.qr_expires_at,
         seconds_remaining=secs_rem,
-        already_marked=already_marked
+        already_marked=already_marked,
+        code_length=len(s.session_code) if s.session_code else 6
     )
     return {"live_session": alert.model_dump()}
 
-@router.get("/upcoming-sessions", summary="Get Upcoming Sessions")
-async def get_upcoming_sessions(
+from app.schemas.student_portal import AttendanceTrendResponse, CourseAttendanceTrend, CourseTrendPoint
+
+@router.get("/attendance-trend", response_model=AttendanceTrendResponse, summary="Get Weekly Attendance Trend")
+async def get_attendance_trend(
     current_user: User = Depends(require_student),
     db: AsyncSession = Depends(get_db)
 ):
-    # Retrieve the student
     student, _ = await get_student_record(current_user.id, db)
     
-    # Retrieve active courses for the student
-    res_c = await db.execute(select(StudentCourse.course_id).filter(StudentCourse.student_id == student.id, StudentCourse.is_active == True))
-    course_ids = [r[0] for r in res_c.all()]
+    # Get active courses
+    res_courses = await db.execute(
+        select(Course)
+        .join(StudentCourse, StudentCourse.course_id == Course.id)
+        .filter(StudentCourse.student_id == student.id, StudentCourse.is_active == True)
+    )
+    courses = res_courses.scalars().all()
     
-    if not course_ids:
-        return {"upcoming_sessions": []}
+    if not courses:
+        return {"courses": []}
     
-    # Normally we would query a Schedule table here. For now, since there's no schedule table,
-    # we return a static projection based on active courses or simply an empty list
-    return {"upcoming_sessions": []}
+    # Get all past sessions and attendance for these courses over the last 4 weeks
+    from datetime import timedelta
+    now = datetime.utcnow()
+    four_weeks_ago = now - timedelta(days=28)
+    
+    res_sess = await db.execute(
+        select(Session, AttendanceRecord)
+        .outerjoin(AttendanceRecord, (AttendanceRecord.session_id == Session.id) & (AttendanceRecord.student_id == student.id))
+        .filter(Session.course_id.in_([c.id for c in courses]), Session.session_date >= four_weeks_ago.date(), Session.is_locked == True)
+    )
+    rows = res_sess.all()
+    
+    # Group by course -> week -> [sessions]
+    import math
+    course_data = {c.id: {} for c in courses}
+    
+    for s, ar in rows:
+        # Calculate week index 0-3
+        days_ago = (now.date() - s.session_date).days
+        week_idx = 3 - math.floor(days_ago / 7)
+        if week_idx < 0: week_idx = 0
+        if week_idx > 3: week_idx = 3
+        
+        if week_idx not in course_data[s.course_id]:
+            course_data[s.course_id][week_idx] = {'total': 0, 'present': 0}
+            
+        course_data[s.course_id][week_idx]['total'] += 1
+        if ar and ar.status == "present":
+            course_data[s.course_id][week_idx]['present'] += 1
+
+    # Format response
+    trend_courses = []
+    for c in courses:
+        trend_points = []
+        for w in range(4):
+            data = course_data[c.id].get(w, None)
+            pct = 0.0
+            if data and data['total'] > 0:
+                pct = (data['present'] / data['total']) * 100
+                
+            trend_points.append(CourseTrendPoint(
+                week_label=f"Week {w + 1}",
+                attendance_pct=round(pct, 1)
+            ))
+            
+        trend_courses.append(CourseAttendanceTrend(
+            course_code=c.code,
+            course_title=c.title,
+            trend=trend_points
+        ))
+        
+    return {"courses": trend_courses}

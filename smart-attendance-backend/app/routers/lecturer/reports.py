@@ -363,14 +363,14 @@ async def get_student_course_report(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     st_row = await db.execute(
-        select(Student, User.email)
+        select(Student, User)
         .join(User, Student.user_id == User.id)
         .filter(Student.id == student_id)
     )
     row = st_row.first()
     if not row:
         raise HTTPException(status_code=404, detail="Student not found")
-    st, email = row
+    st, u = row
 
     sc = await db.scalar(
         select(StudentCourse).filter(
@@ -391,7 +391,9 @@ async def get_student_course_report(
 
     st_dict = st.__dict__.copy()
     st_dict.update({
-        "email": email,
+        "email": u.email,
+        "is_active": u.is_active,
+        "is_verified": u.is_verified,
         "department_name": st_dept.name if st_dept else "Unknown",
         "programme_name": st_prog.name if st_prog else "Unknown",
         "invitation_status": "accepted"
@@ -499,3 +501,66 @@ async def get_course_chart_data(
 
     data = await get_course_data(course_id, current_user, db)
     return data["charts"]
+
+
+@router.get("/defaulters/export", summary="Export Defaulters Report")
+async def export_defaulters(
+    course_id: Optional[str] = None,
+    format: str = Query("pdf", description="Export format: 'pdf' or 'excel'"),
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    data = await get_defaulters(course_id, current_user, db)
+    defaulters_list = data["defaulters"]
+    
+    from app.services.report_service import ReportService
+    import io
+    
+    if format == "pdf":
+        pdf_bytes = ReportService.generate_defaulters_pdf(defaulters_list, "Smart Attendance System", {"Course": course_id or "All Courses"})
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=defaulters_report.pdf"}
+        )
+    else:
+        excel_bytes = ReportService.generate_defaulters_excel(defaulters_list)
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=defaulters_report.xlsx"}
+        )
+
+
+@router.get("/course/{course_id}/student/{student_id}/export", summary="Export Student Course Report")
+async def export_student_report(
+    course_id: str,
+    student_id: str,
+    format: str = Query("pdf", description="Export format: 'pdf' or 'excel'"),
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    from app.services.report_service import ReportService
+    import io
+    
+    data = await get_student_course_report(student_id, course_id, current_user, db)
+    
+    if format == "pdf":
+        summary = data["summary"]
+        courses_data = [{
+            "course_code": summary.course_code,
+            "course_title": summary.course_title,
+            "sessions_present": summary.sessions_present,
+            "sessions_total": summary.sessions_total,
+            "attendance_pct": summary.attendance_pct,
+            "status": summary.status
+        }]
+        
+        pdf_bytes = ReportService.generate_per_student_pdf(data["student"], courses_data)
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={data['student'].student_id}_report.pdf"}
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Excel export for single student not implemented.")

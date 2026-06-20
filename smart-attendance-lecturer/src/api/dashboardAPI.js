@@ -60,6 +60,72 @@ export const sessionsAPI = {
     });
   }
 };
+// ── Active Sessions ───────────────────────────────────────────────────────────
+
+export const activeSessionAPI = {
+  /** Fetch lecturer QR preferences + admin default expiry */
+  getPreferences() {
+    return authRequest('/lecturer/profile/preferences');
+  },
+
+  /** Create + start a new session. Returns ActiveSessionResponse with qr_image_base64. */
+  createSession({ course_id, label, qr_expiry_minutes, session_date }) {
+    const token = localStorage.getItem('lecturer_token');
+    return fetch(`${API_BASE_URL}/lecturer/sessions/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ course_id, label, qr_expiry_minutes, session_date }),
+    }).then(async res => {
+      if (!res.ok) {
+        let msg = 'Failed to create session';
+        try { msg = (await res.json()).detail || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    });
+  },
+
+  /** Poll the current active session state (QR, checked-in students, expiry). */
+  getActiveSession(courseId) {
+    const qs = courseId ? `?course_id=${courseId}` : '';
+    return authRequest(`/lecturer/sessions/active${qs}`);
+  },
+
+  /** Refresh the QR code for an active session. Returns QRRefreshResponse. */
+  refreshQR(sessionId) {
+    const token = localStorage.getItem('lecturer_token');
+    return fetch(`${API_BASE_URL}/lecturer/sessions/${sessionId}/refresh-qr`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    }).then(async res => {
+      if (!res.ok) {
+        let msg = 'Failed to refresh QR';
+        try { msg = (await res.json()).detail || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    });
+  },
+
+  /** End the session. Returns SessionEndResponse with full attendance breakdown. */
+  endSession(sessionId) {
+    const token = localStorage.getItem('lecturer_token');
+    return fetch(`${API_BASE_URL}/lecturer/sessions/${sessionId}/end`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    }).then(async res => {
+      if (!res.ok) {
+        let msg = 'Failed to end session';
+        try { msg = (await res.json()).detail || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    });
+  },
+};
 
 // ── Courses ──────────────────────────────────────────────────────────────────
 
@@ -107,5 +173,49 @@ export const coursesAPI = {
   
   getStudentAttendance(courseId, studentId) {
     return authRequest(`/lecturer/courses/${courseId}/students/${studentId}/attendance`);
+  }
+};
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export const reportsAPI = {
+  getOverview() {
+    return authRequest('/lecturer/reports/overview');
+  },
+  
+  getDefaulters(courseId) {
+    const qs = courseId && courseId !== 'all' ? `?course_id=${courseId}` : '';
+    return authRequest(`/lecturer/reports/defaulters${qs}`);
+  },
+  
+  async downloadCourseReport(courseId, format = 'pdf') {
+    return this._downloadFile(`/lecturer/reports/course/${courseId}/${format}`, `course_report.${format === 'excel' ? 'xlsx' : 'pdf'}`);
+  },
+  
+  async downloadStudentReport(courseId, studentId, format = 'pdf') {
+    return this._downloadFile(`/lecturer/reports/course/${courseId}/student/${studentId}/export?format=${format}`, `student_${studentId}_report.${format === 'excel' ? 'xlsx' : 'pdf'}`);
+  },
+  
+  async downloadDefaultersReport(courseId, format = 'pdf') {
+    const qs = `?format=${format}${courseId && courseId !== 'all' ? `&course_id=${courseId}` : ''}`;
+    return this._downloadFile(`/lecturer/reports/defaulters/export${qs}`, `defaulters_report.${format === 'excel' ? 'xlsx' : 'pdf'}`);
+  },
+
+  async _downloadFile(path, defaultFilename) {
+    const token = localStorage.getItem('lecturer_token');
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    });
+    if (!res.ok) throw new Error('Failed to download report');
+    
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
 };

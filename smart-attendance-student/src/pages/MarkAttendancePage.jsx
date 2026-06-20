@@ -5,6 +5,7 @@ import {
   Info, ArrowRight, Clock, Loader2, X, Lightbulb
 } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
+import { studentAPI } from '../api/studentAPI';
 import OTPInput from '../components/ui/OTPInput';
 import CameraViewfinder from '../components/attendance/CameraViewfinder';
 
@@ -21,9 +22,9 @@ function NotifyStep() {
       </div>
       <h2 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Attendance Session Active!</h2>
       <p className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-        {session?.courseName} — {session?.courseCode}
+        {session?.course_title} — {session?.course_code}
       </p>
-      <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>Lecturer: {session?.lecturerName}</p>
+      <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>Lecturer: {session?.lecturer_name}</p>
       <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Started: {session?.startedMinutesAgo} minutes ago</p>
       <p className="text-4xl font-semibold font-mono mb-6" style={{ color: isUrgent ? 'var(--accent-red)' : 'var(--accent-primary)' }}>
         {formattedTime}
@@ -53,18 +54,33 @@ function CodeStep() {
   const { session, setAttendanceStep } = useSession();
   const navigate = useNavigate();
   const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [locked, setLocked] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleComplete = (code) => {
-    if (code === session?.verificationCode) {
-      setAttendanceStep('method');
-    } else {
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
+  const handleComplete = async (code) => {
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      const res = await studentAPI.verifySessionCode(session.session_id, code);
+      if (res.verified) {
+        setAttendanceStep('method');
+      } else {
+        setError(true);
+        setAttempts(3 - res.attempts_remaining);
+        setErrorMsg(res.message || `Incorrect code. Please check with your lecturer. ${res.attempts_remaining} attempts remaining.`);
+        setTimeout(() => setError(false), 700);
+        if (res.locked_out) setLocked(true);
+      }
+    } catch (err) {
       setError(true);
+      setErrorMsg(err.message || 'An error occurred connecting to the server.');
       setTimeout(() => setError(false), 700);
-      if (newAttempts >= 3) setLocked(true);
+      // Fallback local lock if API returns 403 locked
+      if (err.message && err.message.includes('locked')) setLocked(true);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,14 +123,21 @@ function CodeStep() {
         </div>
         <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Enter Session Code</h2>
         <p className="text-sm italic mb-8" style={{ color: 'var(--text-secondary)' }}>
-          Your lecturer has announced a 6-character code. Enter it below to confirm you are physically present in the classroom.
+          Your lecturer has announced a session code. Enter it below to confirm you are physically present in the classroom.
         </p>
 
-        <OTPInput length={6} onComplete={handleComplete} error={error} disabled={locked} />
+        <div className="relative">
+          <OTPInput length={session?.code_length || 6} onComplete={handleComplete} error={error} disabled={locked || loading} />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-lg">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-primary)]" />
+            </div>
+          )}
+        </div>
 
-        {error && attempts < 3 && (
+        {errorMsg && (
           <p className="text-sm mt-4" style={{ color: 'var(--accent-red)' }}>
-            Incorrect code. Please check with your lecturer. {3 - attempts} attempts remaining.
+            {errorMsg}
           </p>
         )}
 
@@ -202,23 +225,52 @@ function MethodStep() {
 }
 
 function FaceScanStep() {
-  const { setAttendanceStep, setSelectedMethod } = useSession();
+  const { session, setAttendanceStep, setSelectedMethod, refreshSession } = useSession();
   const [scanState, setScanState] = useState('scanning');
   const [failed, setFailed] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const cameraRef = React.useRef(null);
+
+  const performScan = async () => {
+    if (scanState !== 'scanning' || !cameraRef.current) return;
+    try {
+      setScanState('detected');
+      // Briefly pause to simulate capturing
+      await new Promise(r => setTimeout(r, 800));
+      setScanState('processing');
+
+      const imageFile = await cameraRef.current.captureImage();
+      if (!imageFile) throw new Error("Failed to capture image from camera.");
+
+      const res = await studentAPI.markAttendanceFace(session.session_id, imageFile);
+      if (res.success) {
+        setScanState('done');
+        // Let context pull the updated session before moving so it shows success instantly
+        await refreshSession();
+        setAttendanceStep('success');
+      } else {
+        throw new Error(res.message || "Verification failed");
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || 'Verification failed');
+      setFailed(true);
+      setScanState('done'); // Stop processing state
+    }
+  };
 
   useEffect(() => {
-    if (scanState !== 'scanning') return;
-    const t1 = setTimeout(() => setScanState('detected'), 2000);
-    const t2 = setTimeout(() => setScanState('processing'), 3000);
-    const t3 = setTimeout(() => {
-      setScanState('done');
-      setAttendanceStep('success');
-    }, 4000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [scanState, setAttendanceStep]);
+    if (scanState === 'scanning') {
+      const timer = setTimeout(() => {
+        performScan();
+      }, 3000); // Wait 3s before auto-capturing
+      return () => clearTimeout(timer);
+    }
+  }, [scanState]);
 
   const retry = () => {
     setFailed(false);
+    setErrorMsg('');
     setScanState('scanning');
   };
 
@@ -235,15 +287,15 @@ function FaceScanStep() {
         </div>
       </div>
 
-      <CameraViewfinder type="face" state={scanState}>
+      <CameraViewfinder ref={cameraRef} type="face" state={scanState}>
         {scanState === 'scanning' && (
           <>
             <p className="text-sm font-medium text-white">Position your face inside the frame</p>
-            <p className="text-xs text-white/60 mt-1">Hold still — detecting your face...</p>
+            <p className="text-xs text-white/60 mt-1">Auto-capturing in a few seconds...</p>
           </>
         )}
         {scanState === 'detected' && (
-          <p className="text-sm font-medium" style={{ color: 'var(--accent-green)' }}>Face detected! Hold still...</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--accent-green)' }}>Capturing...</p>
         )}
         {scanState === 'processing' && (
           <div className="flex items-center justify-center gap-2">
@@ -266,7 +318,7 @@ function FaceScanStep() {
             <X size={18} style={{ color: 'var(--accent-red)' }} />
             <h3 className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Face Verification Failed</h3>
           </div>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>We couldn't verify your identity. This may be due to:</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>{errorMsg}</p>
           <ul className="text-xs space-y-1 mb-4" style={{ color: 'var(--text-muted)' }}>
             <li>• Poor lighting in the room</li>
             <li>• Face not clearly visible</li>
@@ -287,31 +339,56 @@ function FaceScanStep() {
         </div>
       )}
 
-      <div className="flex gap-2 mt-4">
-        <button onClick={() => { setSelectedMethod('qr'); setAttendanceStep('qr'); }}
-          className="flex-1 h-10 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
-          style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-btn)' }}>
-          Switch to QR Code
-        </button>
-      </div>
+      {!failed && (
+        <div className="flex gap-2 mt-4">
+          <button onClick={() => { setSelectedMethod('qr'); setAttendanceStep('qr'); }}
+            className="flex-1 h-10 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-btn)' }}>
+            Switch to QR Code
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 function QRScanStep() {
-  const { setAttendanceStep, setSelectedMethod } = useSession();
+  const { session, setAttendanceStep, setSelectedMethod, refreshSession } = useSession();
   const [scanState, setScanState] = useState('scanning');
+  const [errorMsg, setErrorMsg] = useState('');
+  const cameraRef = React.useRef(null);
 
   useEffect(() => {
     if (scanState !== 'scanning') return;
-    const t1 = setTimeout(() => setScanState('detected'), 3000);
-    const t2 = setTimeout(() => setScanState('processing'), 3500);
-    const t3 = setTimeout(() => {
-      setScanState('done');
-      setAttendanceStep('success');
-    }, 4500);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [scanState, setAttendanceStep]);
+
+    const interval = setInterval(async () => {
+      if (!cameraRef.current) return;
+      const qrData = cameraRef.current.scanQR();
+      if (qrData) {
+        clearInterval(interval);
+        try {
+          setScanState('detected');
+          await new Promise(r => setTimeout(r, 500));
+          setScanState('processing');
+
+          const res = await studentAPI.markAttendanceQR(session.session_id, qrData);
+          if (res.success) {
+            setScanState('done');
+            await refreshSession();
+            setAttendanceStep('success');
+          } else {
+            throw new Error(res.message || "Invalid QR code");
+          }
+        } catch (err) {
+          setErrorMsg(err.message || 'Verification failed. Try again.');
+          setScanState('scanning');
+          setTimeout(() => setErrorMsg(''), 3000);
+        }
+      }
+    }, 500); // Check every 500ms
+
+    return () => clearInterval(interval);
+  }, [scanState, session.session_id, setAttendanceStep, refreshSession]);
 
   return (
     <div className="animate-fade-in-up">
@@ -326,7 +403,7 @@ function QRScanStep() {
         </div>
       </div>
 
-      <CameraViewfinder type="qr" state={scanState}>
+      <CameraViewfinder ref={cameraRef} type="qr" state={scanState}>
         {scanState === 'scanning' && (
           <>
             <p className="text-sm font-medium text-white">Point your camera at the QR code on the projector screen</p>
@@ -346,6 +423,12 @@ function QRScanStep() {
           </div>
         )}
       </CameraViewfinder>
+
+      {errorMsg && (
+        <div className="mt-2 text-center text-sm" style={{ color: 'var(--accent-red)' }}>
+          {errorMsg}
+        </div>
+      )}
 
       {/* Tip card */}
       {scanState === 'scanning' && (
@@ -414,8 +497,8 @@ function SuccessStep() {
       <div className="rounded-xl p-4 mb-4 text-left"
         style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Course</span><span style={{ color: 'var(--text-primary)' }}>{session?.courseName} — {session?.courseCode}</span></div>
-          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Session</span><span style={{ color: 'var(--text-primary)' }}>{session?.sessionLabel}</span></div>
+          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Course</span><span style={{ color: 'var(--text-primary)' }}>{session?.course_title} — {session?.course_code}</span></div>
+          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Session</span><span style={{ color: 'var(--text-primary)' }}>Live Session</span></div>
           <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Date</span><span style={{ color: 'var(--text-primary)' }}>{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
           <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Method</span>
             <span className="flex items-center gap-1.5" style={{ color: methodColor }}>

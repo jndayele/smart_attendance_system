@@ -1,39 +1,46 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { studentAPI } from '../api/studentAPI';
 
 const SessionContext = createContext(null);
-
-const DEMO_SESSION = {
-  isActive: true,
-  courseCode: "CS301",
-  courseName: "Database Systems",
-  sessionLabel: "Week 9 Lecture",
-  lecturerName: "Dr. Ama Owusu",
-  verificationCode: "AX72KC",
-  startedMinutesAgo: 10,
-  totalMinutes: 25,
-  room: "Room LT4",
-};
 
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(null);
   const [attendanceStep, setAttendanceStep] = useState('notify');
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const startDemoSession = useCallback(() => {
-    const remaining = (DEMO_SESSION.totalMinutes - DEMO_SESSION.startedMinutesAgo) * 60 + 23;
-    setRemainingSeconds(remaining);
-    setSession(DEMO_SESSION);
-    setAttendanceStep('notify');
-    setSelectedMethod(null);
-  }, []);
+  const fetchLiveSession = useCallback(async () => {
+    try {
+      const data = await studentAPI.getLiveSession();
+      if (data.live_session) {
+        setSession(data.live_session);
+        setRemainingSeconds(data.live_session.seconds_remaining || 0);
+        // If already marked, skip straight to success
+        if (data.live_session.already_marked) {
+          setAttendanceStep('success');
+        } else if (attendanceStep === 'notify' || attendanceStep === 'success') {
+          // Reset to notify if a new session appeared
+          setAttendanceStep('notify');
+        }
+      } else {
+        setSession(null);
+        setRemainingSeconds(0);
+        setAttendanceStep('notify');
+      }
+    } catch (err) {
+      console.error("Failed to fetch live session", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [attendanceStep]);
 
-  const clearSession = useCallback(() => {
-    setSession(null);
-    setAttendanceStep('notify');
-    setSelectedMethod(null);
-    setRemainingSeconds(0);
-  }, []);
+  useEffect(() => {
+    fetchLiveSession();
+    // Poll every 10 seconds to catch new sessions
+    const interval = setInterval(fetchLiveSession, 10000);
+    return () => clearInterval(interval);
+  }, [fetchLiveSession]);
 
   useEffect(() => {
     if (!session || remainingSeconds <= 0) return;
@@ -47,7 +54,14 @@ export function SessionProvider({ children }) {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [session, remainingSeconds]);
+  }, [session]); // Reset timer when session changes
+
+  const clearSession = useCallback(() => {
+    setSession(null);
+    setAttendanceStep('notify');
+    setSelectedMethod(null);
+    setRemainingSeconds(0);
+  }, []);
 
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
@@ -66,8 +80,9 @@ export function SessionProvider({ children }) {
       remainingSeconds,
       formattedTime: formatTime(remainingSeconds),
       isUrgent: remainingSeconds > 0 && remainingSeconds < 120,
-      startDemoSession,
+      refreshSession: fetchLiveSession,
       clearSession,
+      loading
     }}>
       {children}
     </SessionContext.Provider>

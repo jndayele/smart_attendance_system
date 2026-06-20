@@ -128,12 +128,11 @@ class FaceService:
         """
         Validate image requirements (resolution, single face, etc).
         Returns: { "valid": bool, "error": str | None }
-
-        FIX: previous version had a broad except that silently returned valid=True
-        on unexpected errors. Now defaults to valid=False on any unhandled exception.
         """
         try:
             img = FaceService._bytes_to_image(image_bytes)
+            if img is None:
+                return {"valid": False, "error": "Invalid image file format or corrupted image."}
         except Exception as e:
             return {"valid": False, "error": f"Could not read image: {str(e)}"}
 
@@ -148,21 +147,20 @@ class FaceService:
         try:
             results = DeepFace.extract_faces(
                 img_path=img,
-                detector_backend="mtcnn",
+                detector_backend=settings.FACE_DETECTOR,
                 enforce_detection=True
             )
         except ValueError as e:
             msg = str(e)
             if "Face could not be detected" in msg or "face" in msg.lower():
-                return {"valid": False, "error": "No face detected in the image."}
+                return {"valid": False, "error": "No face detected in the image. Please ensure you are in a well-lit area and looking directly at the camera."}
             # Any other ValueError from DeepFace is still a validation failure
             return {"valid": False, "error": f"Face validation failed: {msg}"}
         except Exception as e:
-            # FIX: was returning {"valid": True} here — changed to False
             return {"valid": False, "error": f"Face processing error: {str(e)}"}
 
         if len(results) == 0:
-            return {"valid": False, "error": "No face detected in the image."}
+            return {"valid": False, "error": "No face detected in the image. Please ensure you are in a well-lit area and looking directly at the camera."}
 
         if len(results) > 1:
             return {
@@ -291,7 +289,7 @@ class FaceService:
             
         except ValueError as e:
             if "Face could not be detected" in str(e):
-                raise ValueError("No face detected in the live image.")
+                raise ValueError("No face detected in the live image. Please ensure you are in a well-lit area and looking directly at the camera.")
             raise e
 
     @classmethod

@@ -46,5 +46,19 @@ async def init_db() -> None:
     Initialize database, create tables if they don't exist.
     In production, use Alembic migrations instead.
     """
+    import app.models.user
+    import app.models.institution
+    import app.models.academic_year
+    import app.models.department
+    import app.models.programme
+    import app.models.course
+    import app.models.student
+    import app.models.lecturer
+    import app.models.session
+    import app.models.attendance
+    import app.models.session_code_attempt
+    import app.models.class_schedule
+    import app.models.notification
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
