@@ -179,6 +179,7 @@ async def list_students(
         .join(Department, Student.department_id == Department.id)
         .join(Programme, Student.programme_id == Programme.id)
         .join(User, Student.user_id == User.id)
+        .filter(Student.is_suspended == False)
     )
     
     if search:
@@ -194,7 +195,8 @@ async def list_students(
     if level:
         query = query.filter(Student.level == level)
         
-    total_res = await db.execute(select(func.count(Student.id)))
+    total_query = select(func.count()).select_from(query.subquery())
+    total_res = await db.execute(total_query)
     total = total_res.scalar() or 0
 
     res = await db.execute(query.offset((page - 1) * limit).limit(limit))

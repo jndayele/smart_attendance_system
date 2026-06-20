@@ -406,7 +406,7 @@ async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
                 "status": status
             })
             
-    lowest_data.sort(key=lambda x: x["avg_pct"])
+    lowest_data.sort(key=lambda x: x["rate"])
     lowest_data = lowest_data[:10]
 
     return {
