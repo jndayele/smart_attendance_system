@@ -30,6 +30,7 @@ from app.schemas.session import (
     SessionSummary,
     QRRefreshResponse,
     ManualSessionOverride,
+    BulkSessionOverride,
     CheckedInStudent,
     SessionHistoryResponse,
     CourseSessionGroup
@@ -780,6 +781,76 @@ async def override_attendance(
     )
 
     return {"message": "Attendance updated", "record": resp}
+
+@router.post("/{session_id}/attendance/bulk", summary="Bulk Manual Attendance Override")
+async def bulk_override_attendance(
+    session_id: str,
+    data: BulkSessionOverride,
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    """Manual attendance override by lecturer for multiple students at once."""
+    lecturer_id = await get_lecturer_id(current_user.id, db)
+
+    res = await db.execute(select(Session, Course).join(Course, Session.course_id == Course.id).filter(Session.id == session_id))
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s, c = row
+
+    if s.lecturer_id != lecturer_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not s.is_locked:
+        raise HTTPException(status_code=400, detail="Session must be ended before overriding attendance.")
+
+    now = datetime.utcnow()
+    
+    # Verify students are enrolled
+    enrolled_res = await db.execute(select(StudentCourse.student_id).filter(
+        StudentCourse.course_id == c.id, 
+        StudentCourse.student_id.in_(data.student_ids),
+        StudentCourse.is_active == True
+    ))
+    enrolled_ids = {str(r[0]) for r in enrolled_res.all()}
+    
+    for st_id in data.student_ids:
+        st_id_str = str(st_id)
+        if st_id_str not in enrolled_ids:
+            continue
+            
+        ar = await db.scalar(select(AttendanceRecord).filter(AttendanceRecord.session_id == s.id, AttendanceRecord.student_id == st_id))
+        
+        if ar:
+            ar.status = data.status
+            ar.is_manual_override = True
+            ar.override_reason = data.reason
+            ar.override_by = current_user.id
+            ar.override_at = now
+        else:
+            ar = AttendanceRecord(
+                session_id=s.id,
+                student_id=st_id,
+                status=data.status,
+                is_manual_override=True,
+                override_reason=data.reason,
+                override_by=current_user.id,
+                override_at=now,
+                method="manual",
+                checked_in_at=now if data.status == "present" else None
+            )
+            db.add(ar)
+            
+        await db.flush()
+        await NotificationService.check_and_send_threshold_alerts(st_id, c.id, db)
+
+    await db.commit()
+    await NotificationService.log_audit_action(
+        current_user.id, "bulk_manual_attendance_override", "session", s.id,
+        {"course": c.code, "session": s.label or s.session_code, "new_status": data.status, "student_count": len(enrolled_ids)},
+        None, db
+    )
+
+    return {"message": f"Attendance overridden for {len(enrolled_ids)} students"}
 
 @router.post("/{session_id}/export", summary="Export Session Attendance")
 async def export_session_attendance(

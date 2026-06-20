@@ -55,15 +55,24 @@ class ManualSessionOverride(BaseModel):
 
     @field_validator("status")
     @classmethod
+
     def validate_status(cls, v: str) -> str:
         if v not in {"present", "absent"}:
             raise ValueError("status must be 'present' or 'absent'")
         return v
 
+class BulkSessionOverride(BaseModel):
+    student_ids: List[UUID]
+    status: str = Field(..., description="'present' or 'absent'")
+    reason: str = Field(..., min_length=10)
 
-# ---------------------------------------------------------------------------
-# Sub-shapes used inside response bodies
-# ---------------------------------------------------------------------------
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        if v not in {"present", "absent"}:
+            raise ValueError("status must be 'present' or 'absent'")
+        return v
+
 
 class CheckedInStudent(BaseModel):
     """One student who has already checked in during an active session."""

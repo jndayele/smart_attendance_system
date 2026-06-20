@@ -19,7 +19,7 @@ from app.models.programme import Programme
 from app.models.student import Student, StudentCourse
 from app.models.session import Session
 from app.models.attendance import AttendanceRecord
-from app.schemas.course import CourseResponse, CourseListResponse
+from app.schemas.course import CourseResponse, CourseListResponse, BulkWarnRequest
 from app.schemas.lecturer import LecturerCourseDetailResponse, CourseStudentRow, AtRiskStudent
 from app.schemas.session import SessionResponse
 from app.schemas.attendance import AttendanceListResponse, AttendanceRecordResponse
@@ -130,12 +130,12 @@ async def get_course_detail(
         .filter(StudentCourse.course_id == c.id, StudentCourse.is_active == True)
     )
     students = res_stu.all()
-
     enrolled_rows = []
     total_present_all = 0
     total_records_all = sessions_held * len(students)
     below_threshold_count = 0
 
+    att_records = []
     if session_ids and students:
         student_ids = [st.id for st, _ in students]
         res_att = await db.execute(
@@ -145,42 +145,42 @@ async def get_course_detail(
         )
         att_records = res_att.all()
 
-        for st, email in students:
-            st_recs = [r for r in att_records if r.student_id == st.id]
-            st_pres = sum(1 for r in st_recs if r.status.value == "present")
-            total_present_all += st_pres
-            
-            last_checkin = next((r.created_at for r in reversed(st_recs) if r.status.value == "present"), None)
-            pct = (st_pres / sessions_held * 100) if sessions_held > 0 else 0.0
-            
-            if pct < c.threshold_pct:
-                status_val = "at_risk"
-                below_threshold_count += 1
-                # Mark as defaulter if way below threshold (e.g., < 50%)
-                if pct < 50.0:
-                    status_val = "defaulter"
-            else:
-                status_val = "good"
+    for st, email in students:
+        st_recs = [r for r in att_records if r.student_id == st.id]
+        st_pres = sum(1 for r in st_recs if r.status.value == "present")
+        total_present_all += st_pres
+        
+        last_checkin = next((r.created_at for r in reversed(st_recs) if r.status.value == "present"), None)
+        pct = (st_pres / sessions_held * 100) if sessions_held > 0 else 0.0
+        
+        if pct < c.threshold_pct:
+            status_val = "at_risk"
+            below_threshold_count += 1
+            if pct < 50.0:
+                status_val = "defaulter"
+        else:
+            status_val = "good"
 
-            enrolled_rows.append(
-                CourseStudentRow(
-                    student_id=st.id,
-                    student_name=st.name,
-                    student_number=st.student_id,
-                    email=email,
-                    sessions_present=st_pres,
-                    sessions_total=sessions_held,
-                    attendance_pct=pct,
-                    status=status_val,
-                    last_checkin=last_checkin
-                )
+        enrolled_rows.append(
+            CourseStudentRow(
+                student_id=st.id,
+                student_name=st.name,
+                student_number=st.student_id,
+                email=email,
+                sessions_present=st_pres,
+                sessions_total=sessions_held,
+                attendance_pct=pct,
+                status=status_val,
+                last_checkin=last_checkin
             )
+        )
 
     avg_pct = (total_present_all / total_records_all * 100) if total_records_all > 0 else 0.0
 
     return LecturerCourseDetailResponse(
         course_id=c.id,
         course_title=c.title,
+
         course_code=c.code,
         programme_name=p_name,
         programme_code=p_code,
@@ -418,6 +418,36 @@ async def get_course_at_risk(
         for st in detail.enrolled_students if st.status in ["at_risk", "defaulter"]
     ]
 
+
+@router.post("/{course_id}/students/bulk-warn", summary="Bulk Send Warning Emails")
+async def bulk_send_warning_emails(
+    course_id: str,
+    data: BulkWarnRequest,
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    """Send attendance warning emails to multiple students."""
+    lecturer_id = await get_lecturer_id(current_user.id, db)
+
+    c = await db.scalar(select(Course).filter(Course.id == course_id))
+    if not c or c.lecturer_id != lecturer_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    enrolled_res = await db.execute(select(StudentCourse.student_id).filter(
+        StudentCourse.course_id == c.id, 
+        StudentCourse.student_id.in_(data.student_ids),
+        StudentCourse.is_active == True
+    ))
+    enrolled_ids = {str(r[0]) for r in enrolled_res.all()}
+
+    sent_count = 0
+    for st_id in data.student_ids:
+        if str(st_id) not in enrolled_ids:
+            continue
+        await NotificationService.check_and_send_threshold_alerts(st_id, c.id, db)
+        sent_count += 1
+        
+    return {"message": f"Warnings processed for {sent_count} students"}
 
 @router.post("/{course_id}/students/{student_id}/send-warning", summary="Send Warning Email")
 async def send_warning_email(

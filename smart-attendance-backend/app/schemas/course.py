@@ -48,6 +48,9 @@ class CourseUpdate(BaseModel):
             raise ValueError('level must be one of 100, 200, 300, 400, 500, 600')
         return v
 
+class BulkWarnRequest(BaseModel):
+    student_ids: List[UUID]
+
 class CourseResponse(BaseModel):
     id: UUID
     title: str
