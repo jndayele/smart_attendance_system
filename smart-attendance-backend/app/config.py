@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     MAIL_SSL_TLS: bool = False
 
     # Face Recognition
-    FACE_CONFIDENCE_THRESHOLD: int = 80
+    FACE_CONFIDENCE_THRESHOLD: int = 45
     FACE_MODEL: str = "ArcFace"
-    FACE_DETECTOR: str = "opencv"
+    FACE_DETECTOR: str = "retinaface"
     FACE_DISTANCE_METRIC: str = "cosine"
     LIVENESS_DETECTION_ENABLED: bool = False
 

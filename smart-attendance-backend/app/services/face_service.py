@@ -28,11 +28,10 @@ class FaceService:
         img = FaceService._bytes_to_image(image_bytes)
         
         try:
-            # We use mtcnn for reliable multi-face detection instead of opencv
             results = DeepFace.represent(
                 img_path=img,
                 model_name=settings.FACE_MODEL,
-                detector_backend="mtcnn",
+                detector_backend=settings.FACE_DETECTOR,
                 enforce_detection=True
             )
             
@@ -278,6 +277,8 @@ class FaceService:
             threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
             verified = cosine_distance <= threshold_distance
             confidence = (1.0 - cosine_distance) * 100.0
+            
+            logger.info(f"[FaceVerify] distance={cosine_distance:.4f}, confidence={confidence:.2f}%, threshold_distance={threshold_distance:.4f}, verified={verified}")
             
             return {
                 "verified": bool(verified),
