@@ -24,7 +24,9 @@ class StudentCourseCard(BaseModel):
     programme_name: str
     level: int
     semester_number: int
+    credit_hours: Optional[int] = None
     lecturer_name: str
+    lecturer_email: Optional[str] = None
     sessions_present: int
     sessions_total: int
     attendance_pct: float

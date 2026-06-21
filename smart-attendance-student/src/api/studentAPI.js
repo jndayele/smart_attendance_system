@@ -74,5 +74,29 @@ export const studentAPI = {
       method: 'POST',
       body: JSON.stringify({ session_id: sessionId, qr_data: qrData }),
     });
+  },
+
+  getHistory(params = {}) {
+    const queryParams = new URLSearchParams();
+    if (params.course_id && params.course_id !== 'all') queryParams.append('course_id', params.course_id);
+    if (params.status && params.status !== 'all') queryParams.append('status', params.status);
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    
+    const queryString = queryParams.toString();
+    return request(`/student/attendance/history${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getCourseDetails(courseId) {
+    return request(`/student/courses/${courseId}`);
+  },
+
+  getCourses(params = {}) {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    
+    const queryString = queryParams.toString();
+    return request(`/student/courses/${queryString ? `?${queryString}` : ''}`);
   }
 };

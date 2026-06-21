@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+from app.models.user import User as UserModel
 
 from app.database import get_db
 from app.dependencies import require_student
@@ -46,10 +47,12 @@ async def list_courses(
     """List all courses the student is enrolled in."""
     student_id = await get_student_id(current_user.id, db)
 
+    lec_user = UserModel.__table__.alias('lec_user')
     query = (
-        select(Course, Programme.name, Lecturer.name)
+        select(Course, Programme.name, Lecturer.name, lec_user.c.email)
         .join(Programme, Course.programme_id == Programme.id)
         .join(Lecturer, Course.lecturer_id == Lecturer.id)
+        .join(lec_user, lec_user.c.id == Lecturer.user_id)
         .join(StudentCourse, StudentCourse.course_id == Course.id)
         .filter(StudentCourse.student_id == student_id, StudentCourse.is_active == True)
     )
@@ -66,7 +69,7 @@ async def list_courses(
     rows = res.all()
 
     courses = []
-    for c, p_name, l_name in rows:
+    for c, p_name, l_name, l_email in rows:
         res_sess = await db.execute(select(Session.id).filter(Session.course_id == c.id, Session.is_locked == True))
         locked_sess_ids = [r[0] for r in res_sess.all()]
         sessions_total = len(locked_sess_ids)
@@ -103,7 +106,9 @@ async def list_courses(
             programme_name=p_name,
             level=c.level,
             semester_number=c.semester_number,
+            credit_hours=c.credit_hours if hasattr(c, 'credit_hours') else None,
             lecturer_name=l_name,
+            lecturer_email=l_email,
             sessions_present=sessions_present,
             sessions_total=sessions_total,
             attendance_pct=attendance_pct,
@@ -130,16 +135,18 @@ async def get_course_details(
     if not sc:
         raise HTTPException(status_code=403, detail="You are not enrolled in this course.")
 
+    lec_user2 = UserModel.__table__.alias('lec_user2')
     res = await db.execute(
-        select(Course, Programme.name, Programme.code, Lecturer.name)
+        select(Course, Programme.name, Programme.code, Lecturer.name, lec_user2.c.email)
         .join(Programme, Course.programme_id == Programme.id)
         .join(Lecturer, Course.lecturer_id == Lecturer.id)
+        .join(lec_user2, lec_user2.c.id == Lecturer.user_id)
         .filter(Course.id == course_id)
     )
     row = res.first()
     if not row:
         raise HTTPException(status_code=404, detail="Course not found")
-    c, p_name, p_code, l_name = row
+    c, p_name, p_code, l_name, l_email = row
 
     res_sess = await db.execute(select(Session).filter(Session.course_id == c.id).order_by(Session.session_date.desc(), Session.started_at.desc()))
     all_sessions = res_sess.scalars().all()
@@ -200,6 +207,7 @@ async def get_course_details(
         "programme_name": p_name,
         "programme_code": p_code,
         "lecturer_name": l_name,
+        "lecturer_email": l_email,
         "enrolled_student_count": 0,
         "session_count": len(all_sessions)
     })
