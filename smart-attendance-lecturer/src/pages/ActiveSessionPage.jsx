@@ -6,6 +6,7 @@ import QRCodeDisplay from '../components/session/QRCodeDisplay';
 import VerificationCodeDisplay from '../components/session/VerificationCodeDisplay';
 import LiveAttendanceTracker from '../components/session/LiveAttendanceTracker';
 import { activeSessionAPI, coursesAPI, reportsAPI } from '../api/dashboardAPI';
+import { useSocket } from '../context/SocketContext';
 import { Radio, RefreshCw, Clock, Info, CheckCircle, Users, BarChart3, Timer, Download, ScanFace, QrCode, Loader2, Lock } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ function formatDuration(totalSecs) {
 export default function ActiveSessionPage() {
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const { socket } = useSocket();
 
   // Page state machine: 'config' | 'loading' | 'active' | 'ending' | 'ended'
   const [phase, setPhase] = useState('config');
@@ -115,31 +117,60 @@ export default function ActiveSessionPage() {
 
   // ── Live polling ───────────────────────────────────────────────────────────
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const data = await activeSessionAPI.getActiveSession();
+      setLiveData(data);
+      if (data.qr_image_base64) setQrBase64(data.qr_image_base64);
+      setSecondsLeft(prev => {
+        const serverVal = data.seconds_until_qr_expiry || 0;
+        return Math.abs(prev - serverVal) > 5 ? serverVal : prev;
+      });
+    } catch (err) {
+      if (err?.message?.includes('No active session') || err?.message?.includes('404')) {
+        setPhase('config');
+        setLiveData(null);
+      }
+    }
   }, []);
 
-  const startPolling = useCallback((sid) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await activeSessionAPI.getActiveSession();
-        setLiveData(data);
-        if (data.qr_image_base64) setQrBase64(data.qr_image_base64);
-        // Only update secondsLeft from server if it differs significantly (avoid flicker)
-        setSecondsLeft(prev => {
-          const serverVal = data.seconds_until_qr_expiry || 0;
-          return Math.abs(prev - serverVal) > 5 ? serverVal : prev;
-        });
-      } catch (err) {
-        // 404 means session ended externally (e.g., another tab). Stop polling silently.
-        if (err?.message?.includes('No active session') || err?.message?.includes('404')) {
-          stopPolling();
-        }
-      }
-    }, 4000); // poll every 4 seconds
-  }, [stopPolling]);
+  useEffect(() => {
+    if (phase === 'active' && liveData?.id) {
+      fetchLiveData();
+    }
+  }, [phase, liveData?.id, fetchLiveData]);
+
+  useEffect(() => {
+    if (!socket || phase !== 'active' || !liveData?.id) return;
+
+    const roomId = liveData.id;
+    socket.emit('join_session', { session_id: roomId });
+
+    const handleAttendance = (data) => {
+      fetchLiveData();
+    };
+
+    const handleQrRefreshed = (data) => {
+      fetchLiveData();
+    };
+
+    const handleSessionEnded = () => {
+      addToast('Session was ended', 'info');
+      setPhase('config');
+      setLiveData(null);
+    };
+
+    socket.on('attendance_marked', handleAttendance);
+    socket.on('qr_refreshed', handleQrRefreshed);
+    socket.on('session_ended', handleSessionEnded);
+
+    return () => {
+      socket.off('attendance_marked', handleAttendance);
+      socket.off('qr_refreshed', handleQrRefreshed);
+      socket.off('session_ended', handleSessionEnded);
+      socket.emit('leave_session', { session_id: roomId });
+    };
+  }, [socket, phase, liveData?.id, fetchLiveData, addToast]);
 
   // ── QR countdown tick ─────────────────────────────────────────────────────
 
@@ -158,7 +189,6 @@ export default function ActiveSessionPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopPolling();
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
@@ -185,7 +215,6 @@ export default function ActiveSessionPage() {
       setSessionStartedAt(Date.now());
       setDurationSecs(0);
       setPhase('active');
-      startPolling(String(data.id));
     } catch (err) {
       addToast(err.message || 'Failed to start session', 'error');
       setPhase('config');
@@ -207,7 +236,6 @@ export default function ActiveSessionPage() {
   const handleEnd = async () => {
     setConfirmEnd(false);
     setPhase('ending');
-    stopPolling();
     try {
       const data = await activeSessionAPI.endSession(sessionId);
       setEndedData(data);
@@ -215,7 +243,6 @@ export default function ActiveSessionPage() {
     } catch (err) {
       addToast(err.message || 'Failed to end session', 'error');
       setPhase('active');
-      startPolling(sessionId);
     }
   };
 

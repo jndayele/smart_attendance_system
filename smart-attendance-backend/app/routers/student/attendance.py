@@ -23,6 +23,7 @@ from app.models.session import Session
 from app.models.attendance import AttendanceRecord, AttendanceMethodEnum, AttendanceStatusEnum
 from app.models.session_code_attempt import SessionCodeAttempt
 from app.models.lecturer import Lecturer
+from app.socket_manager import sio_server
 from app.schemas.student_portal import (
     SessionCodeVerifyRequest,
     SessionCodeVerifyResponse,
@@ -168,6 +169,21 @@ async def _mark_attendance(db: AsyncSession, student, session, course, method: s
         ip_address=None,
         db=db
     )
+
+    await sio_server.emit('attendance_marked', {
+        'session_id': str(session.id),
+        'student_id': str(student.id),
+        'student_name': student.name,
+        'student_number': student.student_id,
+        'method': method,
+        'checked_in_at': rec.checked_in_at.isoformat()
+    }, room=f"session_{session.id}")
+    
+    await sio_server.emit('global_update', {
+        'type': 'attendance_marked',
+        'student_id': str(student.id),
+        'message': f"Attendance marked for {student.name}"
+    })
 
     return AttendanceMarkResponse(
         success=True,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
+import { useSocket } from '@/context/SocketContext';
 import TopHeader from '@/components/layout/TopHeader';
 import StatCard from '@/components/ui-custom/StatCards';
 import AttendanceTrendChart from '@/components/charts/AttendanceTrendChart';
@@ -11,7 +12,6 @@ import {
   Users, UserCheck, BookOpen, Building2, Clock, AlertTriangle,
   Plus, BarChart3, UserPlus, FileText, Zap, CheckCircle, Calendar, X
 } from 'lucide-react';
-import StatCards from '@/components/ui-custom/StatCards';
 
 const quickActions = [
   { label: 'Add Lecturer', desc: 'Invite a new lecturer', icon: UserPlus, path: '/lecturers', action: 'addLecturer' },
@@ -22,6 +22,7 @@ const quickActions = [
 
 export default function DashboardPage() {
   const { config } = useAppConfig();
+  const { socket } = useSocket();
   const navigate = useNavigate();
   const [showAcadBanner, setShowAcadBanner] = useState(false);
   
@@ -43,7 +44,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 60000); // 1 minute polling
+
+    if (!socket) return;
+    
+    const handleGlobalUpdate = () => {
+      fetchDashboardData();
+    };
+
+    socket.on('global_update', handleGlobalUpdate);
 
     // Check if an academic year has been set up
     const dismissed = sessionStorage.getItem('acad_banner_dismissed');
@@ -55,8 +63,10 @@ export default function DashboardPage() {
       }).catch(() => {});
     }
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      socket.off('global_update', handleGlobalUpdate);
+    };
+  }, [socket]);
 
   const dismissBanner = () => {
     setShowAcadBanner(false);

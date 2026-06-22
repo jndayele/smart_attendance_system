@@ -22,6 +22,7 @@ from app.models.session import Session
 from app.models.student import Student, StudentCourse
 from app.models.attendance import AttendanceRecord
 from app.models.institution import Institution
+from app.socket_manager import sio_server
 from app.schemas.session import (
     SessionCreate,
     SessionUpdate,
@@ -124,6 +125,16 @@ async def create_session(
     )
 
     await NotificationService.log_audit_action(current_user.id, "session_started", "session", new_session.id, {"course": c.code, "session_code": session_code}, None, db)
+
+    await sio_server.emit('global_update', {
+        'type': 'session_started',
+        'message': f"A new session has started for {c.title}"
+    })
+    
+    await sio_server.emit('session_started', {
+        'session_id': str(new_session.id),
+        'course_id': str(c.id)
+    })
 
     s_dict = new_session.__dict__.copy()
     s_dict.update({
@@ -503,6 +514,14 @@ async def refresh_qr(
     qr_bytes = QRService.generate_qr_code(s.id, new_token, c.code)
     qr_base64 = base64.b64encode(qr_bytes).decode('utf-8')
 
+    await sio_server.emit('qr_refreshed', {
+        'session_id': session_id,
+        'qr_token': new_token,
+        'qr_image_base64': qr_base64,
+        'qr_expires_at': new_expiry.isoformat(),
+        'seconds_until_expiry': int((new_expiry - now).total_seconds())
+    }, room=f"session_{session_id}")
+
     return QRRefreshResponse(
         qr_token=new_token,
         qr_image_base64=qr_base64,
@@ -590,6 +609,11 @@ async def end_session(
         {"course": c.code, "present": pres, "absent": absnt, "total": tot, "pct": pct},
         None, db
     )
+
+    await sio_server.emit('session_ended', {
+        'session_id': session_id,
+        'action': 'session_ended'
+    }, room=f"session_{session_id}")
 
     # Need full lists for response
     full_att = await get_session_attendance(str(s.id), None, 1, 1000, current_user, db)
@@ -769,6 +793,22 @@ async def override_attendance(
         message=f"Your attendance for {s.label or s.session_code} in {c.title} has been updated to {data.status} by your lecturer.",
         db=db
     )
+
+    await sio_server.emit('attendance_marked', {
+        'session_id': str(s.id),
+        'student_id': str(st.id),
+        'student_name': st.name,
+        'student_number': st.student_id,
+        'method': "manual",
+        'checked_in_at': ar.checked_in_at.isoformat() if ar.checked_in_at else None,
+        'status': ar.status.value
+    }, room=f"session_{s.id}")
+    
+    await sio_server.emit('global_update', {
+        'type': 'attendance_marked',
+        'student_id': str(st.id),
+        'message': f"Attendance manually updated for {st.name} to {data.status}"
+    })
 
     resp = AttendanceRecordResponse(
         id=ar.id,

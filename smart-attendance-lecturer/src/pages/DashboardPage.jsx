@@ -12,6 +12,7 @@ import RecentSessions from '../components/dashboard/RecentSession';
 import AtRiskStudents from '../components/dashboard/AtRiskStudents';
 import { useToast } from '../components/shared/ToastManager';
 import { dashboardAPI } from '../api/dashboardAPI';
+import { useSocket } from '../context/SocketContext';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const { lecturer } = useLecturerAuth();
   const { config } = useAppConfig();
   const { addToast } = useToast();
+  const { socket } = useSocket();
   const navigate = useNavigate();
 
   const [data, setData] = useState(null);
@@ -86,11 +88,20 @@ export default function DashboardPage() {
   // Initial load
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
-  // Auto-refresh every 60 seconds
+  // Auto-refresh via sockets
   useEffect(() => {
-    const interval = setInterval(() => fetchDashboard(), 60_000);
-    return () => clearInterval(interval);
-  }, [fetchDashboard]);
+    if (!socket) return;
+    
+    const handleGlobalUpdate = () => {
+      fetchDashboard();
+    };
+
+    socket.on('global_update', handleGlobalUpdate);
+
+    return () => {
+      socket.off('global_update', handleGlobalUpdate);
+    };
+  }, [socket, fetchDashboard]);
 
   if (loading) return <DashboardSkeleton />;
 

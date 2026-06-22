@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
+import SlidePanel from '../components/ui-custom/SlidePanel';
+import { useSocket } from '../context/SocketContext';
 import SlideOver from '@/components/ui-custom/SlideOver';
 import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
@@ -8,6 +10,7 @@ import { lecturersAPI, departmentsAPI } from '@/api/api';
 
 export default function LecturersPage() {
   const { addToast } = useToast();
+  const { socket } = useSocket();
   
   // Data state
   const [lecturers, setLecturers] = useState([]);
@@ -40,11 +43,15 @@ export default function LecturersPage() {
 
   useEffect(() => {
     fetchInitialData();
-    const interval = setInterval(() => {
+    
+    if (!socket) return;
+    const handleGlobalUpdate = () => {
       fetchInitialData(true);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [search, filterDept]);
+    };
+    
+    socket.on('global_update', handleGlobalUpdate);
+    return () => socket.off('global_update', handleGlobalUpdate);
+  }, [search, filterDept, socket]);
 
   const fetchInitialData = async (isBackground = false) => {
     try {

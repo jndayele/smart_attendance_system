@@ -8,6 +8,7 @@ import { StudentAuthProvider, useStudentAuth } from './context/AuthContext';
 import { SessionProvider } from './context/SessionContext';
 import { ToastProvider } from './components/ui/AppToast';
 import AppShell from './components/layout/AppShell';
+import { SocketProvider } from './context/SocketContext';
 
 // Auth pages
 import LoginPage from './pages/LoginPage';
@@ -35,31 +36,33 @@ const AppRoutes = () => {
   }
 
   return (
-    <SessionProvider>
-      <ToastProvider>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/register-student" element={<RegisterPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+    <SocketProvider>
+      <SessionProvider>
+        <ToastProvider>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/register-student" element={<RegisterPage />} />
+            <Route path="/register" element={<RegisterPage />} />
 
-          {/* Authenticated routes */}
-          <Route element={<AppShell />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/courses/:id/attendance" element={<CourseAttendancePage />} />
-            <Route path="/mark-attendance" element={<MarkAttendancePage />} />
-            <Route path="/history" element={<AttendanceHistoryPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-          </Route>
+            {/* Authenticated routes */}
+            <Route element={<AppShell />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/courses" element={<CoursesPage />} />
+              <Route path="/courses/:id/attendance" element={<CourseAttendancePage />} />
+              <Route path="/mark-attendance" element={<MarkAttendancePage />} />
+              <Route path="/history" element={<AttendanceHistoryPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Route>
 
-          {/* Redirects */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </ToastProvider>
-    </SessionProvider>
+            {/* Redirects */}
+            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </ToastProvider>
+      </SessionProvider>
+    </SocketProvider>
   );
 };
 

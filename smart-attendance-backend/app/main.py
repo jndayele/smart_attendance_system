@@ -216,3 +216,10 @@ async def root():
     """Redirect to API documentation."""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/docs")
+
+import socketio
+from app.socket_manager import sio_server
+
+# Wrap FastAPI with Socket.IO ASGI app
+# This handles websocket upgrades and falls back to HTTP long-polling if necessary
+app = socketio.ASGIApp(sio_server, other_asgi_app=app)

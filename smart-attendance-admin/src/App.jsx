@@ -19,6 +19,7 @@ import StudentsPage from '@/pages/StudentsPage';
 import ReportsPage from '@/pages/ReportPage';
 import NotificationsPage from '@/pages/NotificationsPage';
 import SettingsPage from '@/pages/SettingsPage';
+import { SocketProvider } from '@/context/SocketContext';
 
 function AppRoutes() {
   const { config } = useAppConfig();
@@ -81,12 +82,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
       <AppProvider>
-        <ToastProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
-          <Toaster />
-        </ToastProvider>
+        <SocketProvider>
+          <ToastProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+            <Toaster />
+          </ToastProvider>
+        </SocketProvider>
       </AppProvider>
     </QueryClientProvider>
   );

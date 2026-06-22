@@ -67,15 +67,19 @@ function AppRoutes() {
   );
 }
 
+import { SocketProvider } from './context/SocketContext';
+
 const AuthenticatedApp = () => {
   return (
     <AppProvider>
       <LecturerAuthProvider>
-        <SessionProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </SessionProvider>
+        <SocketProvider>
+          <SessionProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </SessionProvider>
+        </SocketProvider>
       </LecturerAuthProvider>
     </AppProvider>
   );

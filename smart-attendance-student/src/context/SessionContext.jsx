@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { studentAPI } from '../api/studentAPI';
+import { useSocket } from './SocketContext';
 
 const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
+  const { socket } = useSocket();
   const [session, setSession] = useState(null);
   const [attendanceStep, setAttendanceStep] = useState('notify');
   const [selectedMethod, setSelectedMethod] = useState(null);
@@ -37,10 +39,21 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     fetchLiveSession();
-    // Poll every 10 seconds to catch new sessions
-    const interval = setInterval(fetchLiveSession, 10000);
-    return () => clearInterval(interval);
-  }, [fetchLiveSession]);
+    
+    if (!socket) return;
+    
+    const handleGlobalUpdate = (data) => {
+      if (data?.type === 'session_started') {
+        fetchLiveSession();
+      }
+    };
+    
+    socket.on('global_update', handleGlobalUpdate);
+    
+    return () => {
+      socket.off('global_update', handleGlobalUpdate);
+    };
+  }, [fetchLiveSession, socket]);
 
   useEffect(() => {
     if (!session || remainingSeconds <= 0) return;

@@ -4,9 +4,30 @@ import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import BottomNav from './BottomNav';
 import { useStudentAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
+import { useToast } from '../ui/AppToast';
+import { useEffect } from 'react';
 
 export default function AppShell() {
-  const { isLoggedIn } = useStudentAuth();
+  const { isLoggedIn, student } = useStudentAuth();
+  const { socket } = useSocket();
+  const addToast = useToast();
+
+  useEffect(() => {
+    if (!socket || !student?.id) return;
+
+    const handleGlobalUpdate = (data) => {
+      if (data?.type === 'attendance_marked' && data?.student_id === String(student.id)) {
+        addToast(data.message, 'success');
+      }
+    };
+
+    socket.on('global_update', handleGlobalUpdate);
+
+    return () => {
+      socket.off('global_update', handleGlobalUpdate);
+    };
+  }, [socket, student?.id, addToast]);
 
   if (!isLoggedIn) return <Navigate to="/login" replace />;
 
