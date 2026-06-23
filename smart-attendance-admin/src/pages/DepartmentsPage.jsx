@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui-custom/ToastProvider';
 import { Plus, Pencil, Trash2, Eye, Building2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { departmentsAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 const emptyForm = { name: '', code: '', faculty: '', status: 'Active' };
 
@@ -26,10 +27,6 @@ export default function DepartmentsPage() {
   
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-
-  useEffect(() => {
-    fetchDepts();
-  }, []);
 
   const fetchDepts = async () => {
     try {
@@ -52,6 +49,9 @@ export default function DepartmentsPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => { fetchDepts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(fetchDepts);
 
   const openAdd = () => { setEditItem(null); setForm(emptyForm); setErrors({}); setSlideOpen(true); };
   const openEdit = (d) => { setEditItem(d); setForm({ name: d.name, code: d.code, faculty: d.faculty, status: d.status }); setErrors({}); setSlideOpen(true); };

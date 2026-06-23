@@ -5,6 +5,7 @@ import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
 import { Plus, Calendar, CheckCircle, Loader2, Pencil, Trash2, X } from 'lucide-react';
 import { academicYearsAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 // ─── Date-based semester status ───────────────────────────────────────────────
 function getSemesterStatus(sem) {
@@ -85,9 +86,6 @@ export default function AcademicYearsPage() {
   const [deleteYearModal, setDeleteYearModal] = useState(null); // year object
   const [isDeletingYear, setIsDeletingYear] = useState(false);
 
-  // ── Fetch ───────────────────────────────────────────────────────────────────
-  useEffect(() => { fetchYears(); }, []);
-
   const fetchYears = async () => {
     try {
       setIsLoading(true);
@@ -99,6 +97,10 @@ export default function AcademicYearsPage() {
       setIsLoading(false);
     }
   };
+
+  // Hooks after declaration to avoid temporal dead zone
+  useEffect(() => { fetchYears(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(fetchYears);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const activeYear = years.find(y => y.is_active);

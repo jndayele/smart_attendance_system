@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
 import SlideOver from '@/components/ui-custom/SlideOver';
 import { useToast } from '@/components/ui-custom/ToastProvider';
@@ -6,10 +6,20 @@ import { Plus, Search, Upload, Pencil, Trash2, Eye, RotateCcw, Info, AlertTriang
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentsAPI, departmentsAPI, programmesAPI, coursesAPI } from '../api/api';
 import Papa from 'papaparse';
+import { useSocket } from '@/context/SocketContext';
 
 export default function StudentsPage() {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const { socket } = useSocket();
+
+  // Invalidate all student-related queries whenever the backend pushes an update
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => queryClient.invalidateQueries();
+    socket.on('global_update', refresh);
+    return () => socket.off('global_update', refresh);
+  }, [socket, queryClient]);
 
   // ----- Filters (must come before useQuery that depends on them) -----
   const [search, setSearch] = useState('');

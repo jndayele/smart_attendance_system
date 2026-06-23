@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, AlertTriangle, Mail, ArrowRight, Loader2, BookOpen } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppConfig } from '../context/AppContext';
 import { useStudentAuth } from '../context/AuthContext';
 import { studentAPI } from '../api/studentAPI';
 import CircularProgress from '../components/ui/CircularProgress';
+import { useSocket } from '../context/SocketContext';
 
 const getAttendanceStatus = (pct, threshold) => {
   if (pct >= threshold) return 'good';
@@ -27,8 +28,18 @@ export default function CoursesPage() {
   const { institutionName, academicYear, currentSemester } = useAppConfig();
   const { programme, level } = useStudentAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { socket } = useSocket();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Invalidate the courses query whenever the backend pushes a global_update
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['studentCourses'] });
+    socket.on('global_update', refresh);
+    return () => socket.off('global_update', refresh);
+  }, [socket, queryClient]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['studentCourses', search],

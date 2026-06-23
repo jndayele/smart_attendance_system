@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScanFace, QrCode, X, Download, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { studentAPI } from '../api/studentAPI';
 import { useAppConfig } from '../context/AppContext';
+import { useSocket } from '../context/SocketContext';
 import jsPDF from 'jspdf';
 
 const METHOD_CONFIG = {
@@ -190,9 +191,19 @@ function generatePDF(historyRecords, courses, summary, institutionName) {
 export default function AttendanceHistoryPage() {
   const navigate = useNavigate();
   const { institutionName } = useAppConfig();
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
   const [downloading, setDownloading] = useState(false);
+
+  // Auto-refresh: when a global_update fires (e.g. attendance marked), invalidate history queries
+  const { socket } = useSocket();
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['studentHistory'] });
+    socket.on('global_update', refresh);
+    return () => socket.off('global_update', refresh);
+  }, [socket, queryClient]);
 
   // Fetch student's courses for the filter dropdown
   const { data: coursesData } = useQuery({

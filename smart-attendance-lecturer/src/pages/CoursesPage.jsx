@@ -6,6 +6,7 @@ import { useToast } from '../components/shared/ToastManager';
 import { Search, Users, Clock, TrendingUp, Download, Loader2 } from 'lucide-react';
 import StatusBadge from '../components/shared/StatusBadge';
 import { coursesAPI } from '../api/dashboardAPI';
+import { useSocketRefresh } from '../hooks/useSocketRefresh';
 
 const COURSE_COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#10B981', '#EF4444', '#EC4899'];
 
@@ -46,6 +47,11 @@ export default function CoursesPage() {
     
     return () => clearTimeout(debounce);
   }, [search, statusFilter]);
+
+  // Re-fetch immediately when backend pushes a global_update
+  useSocketRefresh(() => {
+    coursesAPI.getMyCourses({ search }).then(res => setCourses(res.courses || [])).catch(() => {});
+  }, [search]);
 
   const initials = lecturer?.firstName && lecturer?.lastName 
     ? `${lecturer.firstName[0]}${lecturer.lastName[0]}` 

@@ -5,6 +5,7 @@ import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
 import { Plus, Pencil, Trash2, BookOpen, Search, Info, Loader2 } from 'lucide-react';
 import { coursesAPI, programmesAPI, lecturersAPI, academicYearsAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 const emptyForm = { title: '', code: '', programme_id: '', level: '100', semester_id: '', semester_number: 1, credits: 3, lecturer_id: '', threshold: 75, status: 'Active' };
 
@@ -98,6 +99,9 @@ export default function CoursesPage() {
       setIsLoading(false);
     }
   };
+
+  // Auto-refresh on socket event (must be after function declarations to avoid TDZ)
+  useSocketRefresh(() => fetchCourses(), [fProg, fLevel, fSem, search]);
 
   // Get unique levels across all programmes for the filter
   const allLevels = Array.from(new Set(programmes.flatMap(p => p.levels || []))).sort((a, b) => a - b);

@@ -5,6 +5,7 @@ import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';
 import { Plus, Pencil, Trash2, GraduationCap, Loader2 } from 'lucide-react';
 import { programmesAPI, departmentsAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 const emptyForm = { name: '', code: '', department_id: '', duration_years: 4, status: 'Active' };
 
@@ -82,6 +83,9 @@ export default function ProgrammesPage() {
       setIsLoading(false);
     }
   };
+
+  // Auto-refresh on socket event (must be after function declarations to avoid TDZ)
+  useSocketRefresh(() => fetchProgrammes(), [filterDept]);
 
   // Whenever departments load, if we had a filterDept that was a code, refetch 
   // so the backend query uses the correct ID.

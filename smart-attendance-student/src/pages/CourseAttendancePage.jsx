@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ScanFace, QrCode, AlertTriangle, Check, Info, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid, BarChart, Bar,
 } from 'recharts';
 import CircularProgress from '../components/ui/CircularProgress';
 import { studentAPI } from '../api/studentAPI';
+import { useSocket } from '../context/SocketContext';
 
 const METHOD_CONFIG = {
   face: { icon: ScanFace, label: 'Face Scan', color: 'var(--accent-purple)' },
@@ -56,9 +57,19 @@ function CustomTooltip({ active, payload }) {
 export default function CourseAttendancePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { socket } = useSocket();
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
+
+  // Real-time: invalidate this course's data when attendance is updated
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['courseDetails', id] });
+    socket.on('global_update', refresh);
+    return () => socket.off('global_update', refresh);
+  }, [socket, queryClient, id]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['courseDetails', id],

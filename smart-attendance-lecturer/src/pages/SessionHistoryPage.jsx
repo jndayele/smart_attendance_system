@@ -4,6 +4,7 @@ import StatCard from '../components/shared/StatCard';
 import StatusBadge from '../components/shared/StatusBadge';
 import SlideOver from '../components/shared/SlideOver';
 import { sessionsAPI, coursesAPI } from '../api/dashboardAPI';
+import { useSocketRefresh } from '../hooks/useSocketRefresh';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,10 @@ export default function SessionHistoryPage() {
 
   useEffect(() => {
     fetchData();
-  }, [courseFilter]);
+  }, [courseFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh on any backend push
+  useSocketRefresh(() => fetchData(), [courseFilter]);
 
   // Client-side search filter by session label/name
   const filteredGroups = useMemo(() => {

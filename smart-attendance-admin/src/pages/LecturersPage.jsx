@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import TopHeader from '@/components/layout/TopHeader';
-import SlidePanel from '../components/ui-custom/SlidePanel';
-import { useSocket } from '../context/SocketContext';
+import { useSocket } from '@/context/SocketContext';
 import SlideOver from '@/components/ui-custom/SlideOver';
 import ConfirmModal from '@/components/ui-custom/ConfirmModal';
 import { useToast } from '@/components/ui-custom/ToastProvider';

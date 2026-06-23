@@ -7,6 +7,7 @@ import StatusBadge from '../components/shared/StatusBadge';
 import SlideOver from '../components/shared/SlideOver';
 import SessionBarChart from '../components/charts/SessionBarChart';
 import { coursesAPI, sessionsAPI } from '../api/dashboardAPI';
+import { useSocketRefresh } from '../hooks/useSocketRefresh';
 
 export default function CourseDetailPage() {
   const { id } = useParams();
@@ -57,6 +58,9 @@ export default function CourseDetailPage() {
   useEffect(() => {
     fetchAll();
   }, [id]);
+
+  // Re-fetch whenever a global socket update arrives
+  useSocketRefresh(fetchAll, [id]);
 
   const handleBulkWarning = async () => {
     if (!selectedIds.length) return;

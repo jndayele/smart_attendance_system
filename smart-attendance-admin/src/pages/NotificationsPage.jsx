@@ -3,6 +3,7 @@ import TopHeader from '@/components/layout/TopHeader';
 import { useToast } from '@/components/ui-custom/ToastProvider';
 import { AlertTriangle, Bell, Mail, Clock, UserCheck, BarChart3, Send, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { institutionAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 const alertRulesDef = [
   { id: 'alert_below_80', title: 'Student Below 80% Threshold', desc: 'Sends a warning email to the student', icon: AlertTriangle, color: '#F59E0B' },
@@ -33,10 +34,6 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [testEmail, setTestEmail] = useState('');
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
   const fetchSettings = async () => {
     try {
       setLoading(true);
@@ -58,6 +55,10 @@ export default function NotificationsPage() {
       setLoading(false);
     }
   };
+
+  // Hooks after declaration to avoid temporal dead zone
+  useEffect(() => { fetchSettings(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(fetchSettings);
 
   const toggleRule = async (id) => {
     const currentRule = rules.find(r => r.id === id);

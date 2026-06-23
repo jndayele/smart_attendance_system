@@ -6,6 +6,7 @@ import SessionBarChart from '../components/charts/SessionBarChart';
 import WeeklyTrendChart from '../components/charts/WeeklyTrendChart';
 import StatusBadge from '../components/shared/StatusBadge';
 import { reportsAPI, coursesAPI } from '../api/dashboardAPI';
+import { useSocketRefresh } from '../hooks/useSocketRefresh';
 
 export default function ReportsPage() {
   const { config } = useAppConfig();
@@ -28,29 +29,29 @@ export default function ReportsPage() {
   const [studentsForExport, setStudentsForExport] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [overviewRes, defaultersRes] = await Promise.all([
-          reportsAPI.getOverview(),
-          reportsAPI.getDefaulters('all')
-        ]);
-        setOverview(overviewRes || { courses: [] });
-        setDefaulters(defaultersRes.defaulters || []);
-        
-        if (overviewRes?.courses?.length > 0) {
-          setChartCourseId(overviewRes.courses[0].course.id);
-          setExportCourseId(overviewRes.courses[0].course.id);
-          setExportStudentCourseId(overviewRes.courses[0].course.id);
-        }
-      } catch (err) {
-        addToast('Failed to load reports data', 'error');
-      } finally {
-        setLoading(false);
+  const loadReports = async () => {
+    try {
+      const [overviewRes, defaultersRes] = await Promise.all([
+        reportsAPI.getOverview(),
+        reportsAPI.getDefaulters('all')
+      ]);
+      setOverview(overviewRes || { courses: [] });
+      setDefaulters(defaultersRes.defaulters || []);
+      
+      if (overviewRes?.courses?.length > 0) {
+        setChartCourseId(overviewRes.courses[0].course.id);
+        setExportCourseId(overviewRes.courses[0].course.id);
+        setExportStudentCourseId(overviewRes.courses[0].course.id);
       }
-    };
-    fetchData();
-  }, []);
+    } catch (err) {
+      addToast('Failed to load reports data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadReports(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(loadReports);
 
   useEffect(() => {
     if (!exportStudentCourseId) return;

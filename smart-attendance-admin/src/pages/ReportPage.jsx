@@ -7,6 +7,7 @@ import PresentAbsentDonut from '@/components/charts/PresentAbsentDonut';
 import { Building2, BookOpen, UserCheck, AlertTriangle, Users, Download, Mail, Loader2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { reportsAPI, institutionAPI, departmentsAPI, coursesAPI, studentsAPI } from '@/api/api';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -39,10 +40,6 @@ export default function ReportsPage() {
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const fetchData = async () => {
     try {
       setIsLoading(true);
@@ -73,6 +70,10 @@ export default function ReportsPage() {
       setIsLoading(false);
     }
   };
+
+  // Initial load + real-time refresh
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(fetchData);
 
   const handleExport = async (reportTitle, downloadFn, format, requiresId, selectedId) => {
     if (requiresId && !selectedId) {

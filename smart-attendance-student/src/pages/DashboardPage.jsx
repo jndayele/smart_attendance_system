@@ -7,6 +7,7 @@ import StatCard from '../components/ui/StatCard';
 import CourseCard from '../components/dashboard/CourseCard';
 import AttendanceTrendChart from '../components/dashboard/AttendanceTrendChart';
 import { studentAPI } from '../api/studentAPI';
+import { useSocketRefresh } from '../hooks/useSocketRefresh';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -29,8 +30,7 @@ export default function DashboardPage() {
   const [trendData, setTrendData] = useState(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function load() {
+  async function load() {
       try {
         setLoading(true);
         const [dashRes, trendRes] = await Promise.all([
@@ -45,8 +45,9 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
-    load();
-  }, []);
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useSocketRefresh(load);
 
   if (loading) {
     return (
