@@ -12,6 +12,16 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_SSL: bool = True
 
+    # Redis  — used for: Socket.IO multi-worker pub/sub, Celery broker/backend,
+    #          and in-request caching (user auth, session QR tokens).
+    #          For local dev: redis://localhost:6379/0
+    #          For production: use a managed Redis (e.g. Upstash, Redis Cloud)
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://localhost:6379/1"   # separate DB for tasks
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"  # separate DB for results
+
     # JWT
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"

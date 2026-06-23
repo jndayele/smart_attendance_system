@@ -1,27 +1,49 @@
+# ─── Web framework ────────────────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+httpx==0.27.0
+
+# ─── Database ────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.30
 asyncpg==0.29.0
 alembic==1.13.1
+pgvector==0.2.5                  # pgvector Python client for ORM integration
+
+# ─── Redis + Celery (scalability layer) ──────────────────────────────────────
+redis==5.0.4                     # async Redis client (aioredis API included)
+celery==5.3.6                    # distributed task queue
+flower==2.0.1                    # Celery monitoring dashboard
+python-socketio[asyncio_client]==5.11.2  # already present; client needed for Redis emit
+
+# ─── Auth & Security ─────────────────────────────────────────────────────────
 pydantic==2.7.1
 pydantic-settings==2.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.9
+python-dotenv==1.0.1
+
+# ─── Email ───────────────────────────────────────────────────────────────────
 fastapi-mail==1.4.1
+
+# ─── Face recognition ────────────────────────────────────────────────────────
 deepface
 tensorflow
 tf-keras
 opencv-python-headless
 numpy
+Pillow==10.3.0
+
+# ─── Storage / QR / Reports ──────────────────────────────────────────────────
 cloudinary==1.40.0
 qrcode[pil]==7.4.2
 reportlab==4.1.0
 openpyxl==3.1.2
-python-dotenv==1.0.1
-httpx==0.27.0
-Pillow==10.3.0
 aiofiles==23.2.1
+
+# ─── WebSockets ──────────────────────────────────────────────────────────────
+python-socketio==5.11.2
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
 pytest==8.2.0
 pytest-asyncio==0.23.6
-python-socketio==5.11.2

@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import numpy as np
 import cv2
 import logging
@@ -8,6 +10,18 @@ from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# ─── Dedicated thread-pool for CPU-bound DeepFace inference ──────────────────
+# Uses max_workers=None which defaults to min(32, os.cpu_count() + 4).
+# Keeping it separate from the default loop executor avoids starving I/O tasks.
+_FACE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="deepface"
+)
+
+def _run_in_face_executor(fn):
+    """Helper: schedule a synchronous callable on the face thread-pool and await it."""
+    loop = asyncio.get_event_loop()
+    return loop.run_in_executor(_FACE_EXECUTOR, fn)
 
 class FaceService:
     @staticmethod
@@ -20,13 +34,11 @@ class FaceService:
         return img
 
     @staticmethod
-    def extract_face_encoding(image_bytes: bytes) -> List[float]:
+    def _extract_face_encoding_sync(img: np.ndarray) -> List[float]:
         """
-        Extract a 512-dimensional float vector representing the face using DeepFace.
-        Raises ValueError if no face is detected or if multiple faces are detected.
+        Synchronous (blocking) extraction — runs inside thread-pool only.
+        Do NOT call directly from an async context.
         """
-        img = FaceService._bytes_to_image(image_bytes)
-        
         try:
             results = DeepFace.represent(
                 img_path=img,
@@ -34,24 +46,38 @@ class FaceService:
                 detector_backend=settings.FACE_DETECTOR,
                 enforce_detection=True
             )
-            
             if len(results) == 0:
                 raise ValueError("No face detected in the image.")
-            
             if len(results) > 1:
                 raise ValueError("Multiple faces detected. Please provide an image with exactly one face.")
-            
-            encoding = results[0]["embedding"]
-            return encoding
-            
+            return results[0]["embedding"]
         except ValueError as e:
-            # DeepFace raises ValueError if enforce_detection=True and no face is found
             if "Face could not be detected" in str(e):
                 raise ValueError("No face detected in the image.")
-            raise e
+            raise
         except Exception as e:
             logger.error(f"Error extracting face encoding: {str(e)}")
             raise ValueError(f"Face processing failed: {str(e)}")
+
+    @staticmethod
+    def extract_face_encoding(image_bytes: bytes) -> List[float]:
+        """
+        SYNCHRONOUS version — kept for backwards compatibility with Celery tasks
+        (Celery workers run in a regular thread, not inside an async event loop).
+        """
+        img = FaceService._bytes_to_image(image_bytes)
+        return FaceService._extract_face_encoding_sync(img)
+
+    @staticmethod
+    async def extract_face_encoding_async(image_bytes: bytes) -> List[float]:
+        """
+        ASYNC version — offloads to thread-pool so the event loop is never blocked.
+        Use this from FastAPI route handlers.
+        """
+        img = FaceService._bytes_to_image(image_bytes)
+        return await _run_in_face_executor(
+            lambda: FaceService._extract_face_encoding_sync(img)
+        )
 
     @staticmethod
     def _cosine_distance(a: List[float], b: List[float]) -> float:
@@ -113,21 +139,20 @@ class FaceService:
     def preload_model() -> None:
         """
         Download and cache model weights on server startup.
-        Prevents the first student registration from being slow.
+        Runs in the face thread-pool so startup doesn't block the event loop.
         """
         try:
             logger.info(f"Preloading DeepFace model: {settings.FACE_MODEL}")
-            DeepFace.build_model(settings.FACE_MODEL)
+            # Submit to the dedicated executor so it's warm and ready
+            future = _FACE_EXECUTOR.submit(DeepFace.build_model, settings.FACE_MODEL)
+            future.result()  # block startup until model is ready
             logger.info("Face model preloaded successfully.")
         except Exception as e:
             logger.warning(f"Failed to preload face model: {str(e)}. It will be loaded on first use.")
 
     @staticmethod
-    def validate_photo_requirements(image_bytes: bytes) -> Dict[str, Any]:
-        """
-        Validate image requirements (resolution, single face, etc).
-        Returns: { "valid": bool, "error": str | None }
-        """
+    def _validate_photo_requirements_sync(image_bytes: bytes) -> Dict[str, Any]:
+        """Synchronous implementation — runs inside thread-pool only."""
         try:
             img = FaceService._bytes_to_image(image_bytes)
             if img is None:
@@ -153,31 +178,41 @@ class FaceService:
             msg = str(e)
             if "Face could not be detected" in msg or "face" in msg.lower():
                 return {"valid": False, "error": "No face detected in the image. Please ensure you are in a well-lit area and looking directly at the camera."}
-            # Any other ValueError from DeepFace is still a validation failure
             return {"valid": False, "error": f"Face validation failed: {msg}"}
         except Exception as e:
             return {"valid": False, "error": f"Face processing error: {str(e)}"}
 
         if len(results) == 0:
             return {"valid": False, "error": "No face detected in the image. Please ensure you are in a well-lit area and looking directly at the camera."}
-
         if len(results) > 1:
-            return {
-                "valid": False,
-                "error": "Multiple faces detected. Please provide an image with exactly one face."
-            }
+            return {"valid": False, "error": "Multiple faces detected. Please provide an image with exactly one face."}
 
         face_area = results[0].get("facial_area", {})
         face_width = face_area.get("w", 0)
         face_height = face_area.get("h", 0)
-
         if face_width < 100 or face_height < 100:
-            return {
-                "valid": False,
-                "error": "Face is too small in the frame. Please get closer to the camera."
-            }
+            return {"valid": False, "error": "Face is too small in the frame. Please get closer to the camera."}
 
         return {"valid": True, "error": None}
+
+    @staticmethod
+    def validate_photo_requirements(image_bytes: bytes) -> Dict[str, Any]:
+        """
+        SYNCHRONOUS version — kept for Celery tasks.
+        Validate image requirements (resolution, single face, etc).
+        Returns: { "valid": bool, "error": str | None }
+        """
+        return FaceService._validate_photo_requirements_sync(image_bytes)
+
+    @staticmethod
+    async def validate_photo_requirements_async(image_bytes: bytes) -> Dict[str, Any]:
+        """
+        ASYNC version — offloads DeepFace to thread-pool.
+        Use this from FastAPI route handlers.
+        """
+        return await _run_in_face_executor(
+            lambda: FaceService._validate_photo_requirements_sync(image_bytes)
+        )
 
     @staticmethod
     def compute_sessions_needed(
@@ -210,15 +245,14 @@ class FaceService:
         return max(0, int(x))
 
     @staticmethod
-    def verify_face_from_encoding(
-        live_image_bytes: bytes,
+    def _verify_face_from_encoding_sync(
+        img: np.ndarray,
         stored_encoding: List[float]
     ) -> Dict[str, Any]:
         """
-        Primary function for attendance endpoints to verify face encoding.
+        Synchronous implementation — runs inside thread-pool only.
+        Do NOT call directly from an async context.
         """
-        img = FaceService._bytes_to_image(live_image_bytes)
-        
         try:
             if settings.LIVENESS_DETECTION_ENABLED:
                 try:
@@ -247,8 +281,8 @@ class FaceService:
                             "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD,
                             "liveness_failed": True
                         }
-                    raise e
-                    
+                    raise
+
             results = DeepFace.represent(
                 img_path=img,
                 model_name=settings.FACE_MODEL,
@@ -256,30 +290,33 @@ class FaceService:
                 enforce_detection=True,
                 align=True
             )
-            
+
             if len(results) == 0:
                 raise ValueError("No face detected in the image.")
-            
+
             live_encoding = results[0]["embedding"]
-            
+
             vec_a = np.array(live_encoding)
             vec_b = np.array(stored_encoding)
-            
+
             dot_product = np.dot(vec_a, vec_b)
             norm_a = np.linalg.norm(vec_a)
             norm_b = np.linalg.norm(vec_b)
-            
+
             if norm_a == 0 or norm_b == 0:
                 cosine_distance = 1.0
             else:
                 cosine_distance = 1.0 - (dot_product / (norm_a * norm_b))
-                
+
             threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
             verified = cosine_distance <= threshold_distance
             confidence = (1.0 - cosine_distance) * 100.0
-            
-            logger.info(f"[FaceVerify] distance={cosine_distance:.4f}, confidence={confidence:.2f}%, threshold_distance={threshold_distance:.4f}, verified={verified}")
-            
+
+            logger.info(
+                f"[FaceVerify] distance={cosine_distance:.4f}, confidence={confidence:.2f}%, "
+                f"threshold_distance={threshold_distance:.4f}, verified={verified}"
+            )
+
             return {
                 "verified": bool(verified),
                 "distance": round(float(cosine_distance), 4),
@@ -287,34 +324,75 @@ class FaceService:
                 "threshold_distance": float(threshold_distance),
                 "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD
             }
-            
+
         except ValueError as e:
             if "Face could not be detected" in str(e):
                 raise ValueError("No face detected in the live image. Please ensure you are in a well-lit area and looking directly at the camera.")
-            raise e
+            raise
+
+    @staticmethod
+    def verify_face_from_encoding(
+        live_image_bytes: bytes,
+        stored_encoding: List[float]
+    ) -> Dict[str, Any]:
+        """
+        SYNCHRONOUS version — kept for Celery tasks.
+        Primary function for attendance endpoints to verify face encoding.
+        """
+        img = FaceService._bytes_to_image(live_image_bytes)
+        return FaceService._verify_face_from_encoding_sync(img, stored_encoding)
+
+    @staticmethod
+    async def verify_face_from_encoding_async(
+        live_image_bytes: bytes,
+        stored_encoding: List[float]
+    ) -> Dict[str, Any]:
+        """
+        ASYNC version — offloads DeepFace inference to thread-pool.
+        Use this from FastAPI route handlers to avoid blocking the event loop.
+        """
+        img = FaceService._bytes_to_image(live_image_bytes)
+        return await _run_in_face_executor(
+            lambda: FaceService._verify_face_from_encoding_sync(img, stored_encoding)
+        )
 
     @classmethod
     async def check_duplicate_face(cls, db, live_encoding: List[float], exclude_student_id=None) -> None:
         """
         Queries all existing face encodings and ensures this face isn't already registered.
         Raises ValueError if a duplicate is found.
+
+        NOTE: This is an O(N) Python loop over all registered students.
+        When pgvector is enabled (after the vector migration), this will be replaced
+        by a single SQL ANN query: ORDER BY face_vector <=> $1 LIMIT 1.
+        For now the comparison runs in the dedicated face thread-pool so the event
+        loop is not blocked.
         """
         from app.models.student import Student
         from sqlalchemy.future import select
-        
-        query = select(Student.id, Student.name, Student.face_encoding).where(Student.face_registered == True)
+
+        query = select(Student.id, Student.name, Student.face_encoding).where(
+            Student.face_registered == True
+        )
         if exclude_student_id:
             query = query.where(Student.id != exclude_student_id)
-            
+
         result = await db.execute(query)
         students = result.all()
-        
+
         threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
-        
-        for st_id, st_name, stored_encoding in students:
-            if not stored_encoding:
-                continue
-            distance = cls._cosine_distance(live_encoding, stored_encoding)
-            if distance <= threshold_distance:
-                raise ValueError(f"Face is already registered to another student ({st_name}).")
+        live_vec = np.array(live_encoding)
+
+        def _compare_all():
+            for st_id, st_name, stored_encoding in students:
+                if not stored_encoding:
+                    continue
+                distance = cls._cosine_distance(live_vec.tolist(), stored_encoding)
+                if distance <= threshold_distance:
+                    return st_name
+            return None
+
+        duplicate_name = await _run_in_face_executor(_compare_all)
+        if duplicate_name:
+            raise ValueError(f"Face is already registered to another student ({duplicate_name}).")
 

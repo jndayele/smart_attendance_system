@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query, 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import get_db
 from app.dependencies import require_student
@@ -128,75 +129,124 @@ async def verify_code(
 
 
 async def _mark_attendance(db: AsyncSession, student, session, course, method: str):
-    # Create record
-    rec = AttendanceRecord(
-        session_id=session.id,
-        student_id=student.id,
-        checked_in_at=datetime.utcnow(),
-        method=AttendanceMethodEnum(method),
-        status=AttendanceStatusEnum("present"),
-        is_manual_override=False
+    """
+    Atomically mark attendance using INSERT ... ON CONFLICT DO NOTHING.
+    This eliminates the race condition where two concurrent requests both pass
+    the duplicate check and then both insert, causing an IntegrityError.
+    All DB writes (attendance + notification + audit log) are batched into
+    a single transaction with one round-trip commit.
+    """
+    import uuid as _uuid
+    from app.models.notification import Notification, AuditLog
+
+    now = datetime.utcnow()
+
+    # ── Step 1: Atomic upsert — race-condition safe ─────────────────────────────
+    insert_stmt = (
+        pg_insert(AttendanceRecord)
+        .values(
+            id=_uuid.uuid4(),
+            session_id=session.id,
+            student_id=student.id,
+            checked_in_at=now,
+            method=AttendanceMethodEnum(method),
+            status=AttendanceStatusEnum("present"),
+            is_manual_override=False,
+            created_at=now,
+        )
+        .on_conflict_do_nothing(constraint="uq_session_student")
     )
-    db.add(rec)
-    await db.commit()
+    result = await db.execute(insert_stmt)
 
-    # Recompute pct
+    if result.rowcount == 0:
+        # Another concurrent request already inserted this record
+        raise HTTPException(status_code=400, detail="Attendance already marked for this session.")
+
+    # ── Step 2: Compute attendance % (read-only, no extra commit needed) ───
     pct = await NotificationService.compute_attendance_pct(student.id, course.id, db)
-    
-    # Send threshold alerts
-    await NotificationService.check_and_send_threshold_alerts(student.id, course.id, db)
-    
-    status_label = "good"
-    if pct < course.threshold_pct:
-        status_label = "at_risk"
+    status_label = "good" if pct >= course.threshold_pct else "at_risk"
 
-    # Notification
-    await NotificationService.create_notification(
+    # ── Step 3: Batch all write objects in this same transaction ──────────
+    # In-app attendance confirmation notification
+    notif = Notification(
+        id=_uuid.uuid4(),
         user_id=student.user_id,
         type="attendance_marked",
         title="Attendance Confirmed",
-        message=f"You are marked Present for {course.title} via {'Face Scan' if method == 'face' else 'QR Code'}. Attendance: {pct:.1f}%",
-        db=db
+        message=(
+            f"You are marked Present for {course.title} via "
+            f"{'Face Scan' if method == 'face' else 'QR Code'}. "
+            f"Attendance: {pct:.1f}%"
+        ),
+        is_read=False,
+        created_at=now,
     )
-    
+    db.add(notif)
+
     # Audit log
-    await NotificationService.log_audit_action(
+    import json as _json
+    audit = AuditLog(
+        id=_uuid.uuid4(),
         performed_by=student.user_id,
         action=f"attendance_marked_{method}",
         entity_type="session",
         entity_id=session.id,
-        details={"course": course.code, "session": str(session.id), "student": str(student.id)},
+        details=_json.dumps({
+            "course": course.code,
+            "session": str(session.id),
+            "student": str(student.id),
+        }),
         ip_address=None,
-        db=db
+        created_at=now,
+    )
+    db.add(audit)
+
+    # ONE commit for everything above ────────────────────────────────
+    await db.commit()
+
+    # ── Step 4: Background concerns (threshold alerts, socket events) ────
+    # Threshold alert check (non-blocking; runs after the commit)
+    try:
+        await NotificationService.check_and_send_threshold_alerts(student.id, course.id, db)
+    except Exception as e:
+        logger.warning(f"Threshold alert failed (non-critical): {e}")
+
+    # Socket.IO events — emit to session room and global feed
+    await sio_server.emit(
+        "attendance_marked",
+        {
+            "session_id": str(session.id),
+            "student_id": str(student.id),
+            "student_name": student.name,
+            "student_number": student.student_id,
+            "method": method,
+            "checked_in_at": now.isoformat(),
+        },
+        room=f"session_{session.id}",
     )
 
-    await sio_server.emit('attendance_marked', {
-        'session_id': str(session.id),
-        'student_id': str(student.id),
-        'student_name': student.name,
-        'student_number': student.student_id,
-        'method': method,
-        'checked_in_at': rec.checked_in_at.isoformat()
-    }, room=f"session_{session.id}")
-    
-    await sio_server.emit('global_update', {
-        'type': 'attendance_marked',
-        'student_id': str(student.id),
-        'message': f"Attendance marked for {student.name}"
-    })
+    await sio_server.emit(
+        "global_update",
+        {
+            "type": "attendance_marked",
+            "student_id": str(student.id),
+            "message": f"Attendance marked for {student.name}",
+        },
+    )
 
     return AttendanceMarkResponse(
         success=True,
         status="present",
         message="Attendance marked successfully.",
         method=method,
-        checked_in_at=rec.checked_in_at,
+        checked_in_at=now,
         course_title=course.title,
         course_code=course.code,
         session_label=session.label or session.session_code,
         updated_attendance_pct=pct,
-        updated_status=status_label
+        updated_status=status_label,
     )
+
 
 
 @router.post("/mark/face", response_model=AttendanceMarkResponse, summary="Step 4A: Face Scan")
@@ -237,17 +287,21 @@ async def mark_face(
         raise HTTPException(status_code=400, detail="Face not registered. Contact your admin.")
 
     image_bytes = await face_image.read()
-    val_res = FaceService.validate_photo_requirements(image_bytes)
+
+    # ── Async face validation — runs in thread-pool, won't block event loop ──
+    val_res = await FaceService.validate_photo_requirements_async(image_bytes)
     if not val_res["valid"]:
         raise HTTPException(status_code=400, detail=val_res["error"])
 
     try:
-        match_res = FaceService.verify_face_from_encoding(image_bytes, student.face_encoding)
+        # ── Async face verification — runs in thread-pool ───────────────────
+        match_res = await FaceService.verify_face_from_encoding_async(image_bytes, student.face_encoding)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Face verification error: {e}")
         raise HTTPException(status_code=500, detail="Face verification failed. Please try again.")
+
 
     if not match_res["verified"]:
         if match_res.get("liveness_failed"):

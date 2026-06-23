@@ -7,17 +7,32 @@ settings = get_settings()
 
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
+# ─── Connection pool sizing ───────────────────────────────────────────────────
+# IMPORTANT — multi-worker math:
+#
+#   Total DB connections = pool_size × max_overflow × num_uvicorn_workers
+#   Example: 5 × 2 × 4 workers = max 40 connections per deploy
+#
+# Supabase free tier  → 60 connection limit
+# Supabase Pro tier   → 200 connection limit
+# If you exceed the limit you will get "remaining connection slots are reserved"
+#
+# PRODUCTION RECOMMENDATION:
+#   Route all connections through PgBouncer in transaction mode.
+#   Then pool_size can be 20 per worker because PgBouncer multiplexes them
+#   into far fewer actual PostgreSQL connections.
+#
 # Engine configuration for Supabase with SSL required and connection pooling
 engine = create_async_engine(
     settings.DATABASE_URL,
     connect_args={"ssl": "require"},
     echo=settings.DEBUG,
     poolclass=AsyncAdaptedQueuePool,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=5,          # per-worker — multiply by num workers for total
+    max_overflow=5,       # burst headroom per worker
     pool_timeout=30,
-    pool_recycle=1800,
-    pool_pre_ping=True
+    pool_recycle=1800,    # recycle connections after 30 min (avoids stale TCP)
+    pool_pre_ping=True,   # detect dead connections before use
 )
 
 # Async session factory

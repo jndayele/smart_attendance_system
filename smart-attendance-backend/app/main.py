@@ -34,40 +34,36 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     Lifespan events: startup and shutdown.
+
+    Note on background schedulers
+    -------------------------------
+    Periodic tasks (absence scanner, session checker, weekly reports, cleanup)
+    are now managed by Celery Beat.  They have been removed from this lifespan
+    to prevent duplicate execution across Uvicorn workers.
+
+    To start the scheduler:
+        celery -A app.celery_app beat --loglevel=info
+    To start a worker:
+        celery -A app.celery_app worker --concurrency=4 --pool=prefork
     """
     # Startup
     logger.info("Starting up Smart Attendance System...")
-    
-    # 1. Initialize database (create tables if using run_sync create_all)
-    # In production, alembic migrations should be used instead.
+
+    # 1. Initialize database
     try:
         await init_db()
         logger.info("Database initialized.")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
 
-    # 2. Preload DeepFace model
+    # 2. Preload DeepFace model into the dedicated thread-pool executor
     FaceService.preload_model()
-    
-    # 3. Start background tasks
-    import asyncio
-    from app.tasks.scanner import start_scheduler, start_hourly_scanner
-    from app.tasks.reports import start_report_scheduler
-    from app.tasks.cleanup import start_cleanup_scheduler
-    
-    tasks = [
-        asyncio.create_task(start_scheduler()),
-        asyncio.create_task(start_hourly_scanner()),
-        asyncio.create_task(start_report_scheduler()),
-        asyncio.create_task(start_cleanup_scheduler())
-    ]
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Smart Attendance System...")
-    for t in tasks:
-        t.cancel()
+
 
 
 app = FastAPI(
@@ -193,10 +189,11 @@ app.include_router(
 
 @app.get("/health", tags=["system"])
 async def health_check():
-    """Health check endpoint to verify API and DB status."""
+    """Health check endpoint to verify API, DB, and Redis status."""
     from sqlalchemy import text
     from app.database import engine
-    
+    from app.core.redis import health_check as redis_health
+
     db_status = "disconnected"
     try:
         async with engine.connect() as conn:
@@ -204,11 +201,14 @@ async def health_check():
             db_status = "connected"
     except Exception as e:
         logger.error(f"Health check DB error: {e}")
-        
+
+    redis_status = "connected" if await redis_health() else "disconnected"
+
     return {
         "status": "ok",
         "version": app.version,
-        "db": db_status
+        "db": db_status,
+        "redis": redis_status,
     }
 
 @app.get("/", include_in_schema=False)
