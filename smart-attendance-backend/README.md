@@ -1,95 +1,102 @@
-# Smart Attendance System Backend
+<div align="center">
 
-## Prerequisites
-- Python 3.11+ installed
-- Git
-- A Supabase account (free tier is fine)
-- A Cloudinary account (free tier is fine)
+# ⚙️ Backend Engine
 
-## Installation Steps (run these in order)
+The powerhouse of the Smart Attendance System. Handles complex background processing, facial recognition, and live WebSocket broadcasts.
 
-1. Clone or create the project directory
-   ```bash
-   mkdir smart-attendance-backend
-   cd smart-attendance-backend
-   ```
+<p>
+  <img src="https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/Celery-37814A?style=for-the-badge&logo=celery&logoColor=white" alt="Celery" />
+</p>
 
-2. Create virtual environment
-   ```bash
-   python -m venv venv
-   ```
+</div>
 
-3. Activate virtual environment
-   - **Windows:** `venv\Scripts\activate`
-   - **Mac/Linux:** `source venv/bin/activate`
+---
 
-4. Install dependencies
-   ```bash
-   pip install -r requirements.txt
-   ```
-   > **Note:** TensorFlow (~500MB) will be downloaded. This is normal. First run will also download ArcFace weights (~250MB).
+## 📖 Table of Contents
+- [Tech Stack](#-tech-stack)
+- [Setup Instructions (Without Docker)](#-setup-instructions-without-docker)
+- [Running the System (Production Ready)](#️-running-the-system-production-ready)
+- [API Documentation](#-api-documentation)
 
-5. Create a Supabase project
-   - Go to [Supabase](https://supabase.com) and sign in
-   - Click "New Project"
-   - Name it: `smart-attendance`
-   - Set a strong database password (save this — you need it)
-   - Choose the region closest to you
-   - Wait ~2 minutes for provisioning to complete
+---
 
-   **Get your connection string:**
-   - Go to Project Settings → Database
-   - Click the "Connection String" tab
-   - Select "URI" format
-   - Copy the string — looks like: `postgresql://postgres:[YOUR-PASSWORD]@db.xxxx.supabase.co:5432/postgres`
-   - Change `postgresql://` to `postgresql+asyncpg://`
-   - Replace `[YOUR-PASSWORD]` with your actual database password
+## 🛠️ Tech Stack
 
-6. Set up environment variables
-   ```bash
-   cp .env.example .env
-   ```
-   Open `.env` and fill in:
-   - `DATABASE_URL` (your Supabase connection string from step 5)
-   - `JWT_SECRET_KEY` (generate a random 32+ character string)
-   - `APP_SECRET_KEY` (generate a different random 32+ character string)
-   - Cloudinary credentials (from cloudinary.com dashboard)
-   - Email/SMTP credentials (Gmail app password recommended)
+| Technology | Purpose |
+| :--- | :--- |
+| **FastAPI** | Core asynchronous web framework |
+| **PostgreSQL + pgvector** | Primary database and vector similarity search engine |
+| **Redis** | In-Memory cache, message broker, and Socket.IO adapter |
+| **Celery** | Distributed task queue for CPU-bound face recognition |
+| **DeepFace** | State-of-the-art facial recognition AI model |
+| **Socket.IO** | Real-time bidirectional event broadcasting |
 
-7. Run database migrations
-   ```bash
-   alembic upgrade head
-   ```
-   This creates all tables in your Supabase database. You can verify by going to Supabase → Table Editor.
+---
 
-8. Start the development server
-   ```bash
-   uvicorn app.main:app --reload --port 8000
-   ```
-   > **Note:** First startup downloads ArcFace model weights (~250MB). This only happens once — they are cached after.
+## 🚀 Setup Instructions (Without Docker)
 
-9. Open API documentation
-   http://localhost:8000/docs
+<details>
+<summary><b>Click to expand setup instructions</b></summary>
+<br>
 
-10. Complete first-time setup
-    Call `POST /api/v1/auth/setup` with your institution details.
-    This creates the admin account and enables the system.
-    After this, log in at `POST /api/v1/auth/login`.
+### 1. Prerequisites
+Ensure you have **PostgreSQL** and **Redis** running locally. Your PostgreSQL instance **must** have the `pgvector` extension installed.
 
-## Project Structure Overview
-- `app/models/` → Database table definitions
-- `app/schemas/` → Request and response data shapes
-- `app/routers/` → API endpoints (admin, lecturer, student)
-- `app/services/` → Business logic (face recognition, email, QR, reports)
-- `app/utils/` → Helper functions (security, validators)
-
-## Running Tests
+### 2. Virtual Environment Setup
 ```bash
-pytest tests/ -v
+# Create a virtual environment
+python -m venv venv
+
+# Activate it (Windows)
+venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-## Deployment (Railway or Render)
-- Push code to GitHub
-- Connect repo to Railway or Render
-- Add all `.env` variables in the platform's environment settings
-- Platform will run: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+### 3. Environment Variables
+Create a `.env` file in the root of the backend directory:
+```bash
+DATABASE_URL=postgresql+asyncpg://user:password@localhost/smart_attendance
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
+```
+
+### 4. Database Migrations
+Run Alembic to create your tables and initialize the `pgvector` columns:
+```bash
+alembic upgrade head
+```
+</details>
+
+---
+
+## 🏃‍♂️ Running the System (Production Ready)
+
+To handle the heavy load of facial recognition, we use a scalable "Waiter & Chef" architecture. Open **three separate terminals**, activate your virtual environment in each, and run the following:
+
+#### Terminal 1: The API Server (The Waiters)
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+#### Terminal 2: Celery Workers (The Chefs)
+```bash
+celery -A app.celery_app worker --concurrency=4 --loglevel=info --pool=prefork
+```
+
+#### Terminal 3: Celery Beat (The Manager)
+```bash
+celery -A app.celery_app beat --loglevel=info
+```
+
+---
+
+## 📡 API Documentation
+Once the API is running, view the interactive auto-generated documentation:
+- ⚡ **Swagger UI**: `http://localhost:8000/docs`
+- 📚 **ReDoc**: `http://localhost:8000/redoc`

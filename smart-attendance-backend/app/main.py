@@ -56,7 +56,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
 
-    # 2. Preload DeepFace model into the dedicated thread-pool executor
+    # 2. Initialize Rate Limiter
+    import redis.asyncio as aioredis
+    from fastapi_limiter import FastAPILimiter
+    try:
+        redis_conn = aioredis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(redis_conn)
+        logger.info("FastAPI Limiter initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize FastAPI Limiter: {e}")
+
+    # 3. Preload DeepFace model into the dedicated thread-pool executor
     FaceService.preload_model()
 
     yield

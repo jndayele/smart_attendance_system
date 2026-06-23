@@ -359,40 +359,30 @@ class FaceService:
     @classmethod
     async def check_duplicate_face(cls, db, live_encoding: List[float], exclude_student_id=None) -> None:
         """
-        Queries all existing face encodings and ensures this face isn't already registered.
-        Raises ValueError if a duplicate is found.
-
-        NOTE: This is an O(N) Python loop over all registered students.
-        When pgvector is enabled (after the vector migration), this will be replaced
-        by a single SQL ANN query: ORDER BY face_vector <=> $1 LIMIT 1.
-        For now the comparison runs in the dedicated face thread-pool so the event
-        loop is not blocked.
+        Queries existing face encodings using pgvector's cosine distance operator (<=>).
+        Raises ValueError if a duplicate is found within the threshold.
         """
         from app.models.student import Student
         from sqlalchemy.future import select
-
-        query = select(Student.id, Student.name, Student.face_encoding).where(
+        
+        # pgvector uses cosine distance by default with <=>
+        # We find the single closest match and check if its distance is within threshold
+        query = select(Student.name, Student.face_encoding.cosine_distance(live_encoding).label("distance")).where(
             Student.face_registered == True
         )
         if exclude_student_id:
             query = query.where(Student.id != exclude_student_id)
+            
+        # Order by distance (closest first)
+        query = query.order_by(Student.face_encoding.cosine_distance(live_encoding)).limit(1)
 
         result = await db.execute(query)
-        students = result.all()
+        closest_match = result.first()
 
-        threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
-        live_vec = np.array(live_encoding)
-
-        def _compare_all():
-            for st_id, st_name, stored_encoding in students:
-                if not stored_encoding:
-                    continue
-                distance = cls._cosine_distance(live_vec.tolist(), stored_encoding)
-                if distance <= threshold_distance:
-                    return st_name
-            return None
-
-        duplicate_name = await _run_in_face_executor(_compare_all)
-        if duplicate_name:
-            raise ValueError(f"Face is already registered to another student ({duplicate_name}).")
+        if closest_match:
+            st_name, distance = closest_match
+            threshold_distance = 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0)
+            
+            if distance is not None and float(distance) <= threshold_distance:
+                raise ValueError(f"Face is already registered to another student ({st_name}).")
 

@@ -25,9 +25,34 @@ services:
       - redis_data:/data
     command: redis-server --save 60 1 --loglevel warning
 
-  # Note: The FastAPI backend and Celery workers are intended to be run locally
-  # via Python virtual environment (e.g. `uvicorn app.main:app` and `celery -A app.celery_app worker`)
-  # during development, so we only containerize the infrastructure dependencies here.
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+  celery-worker:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    # Scale celery workers using docker-compose up --scale celery-worker=4
+    command: celery -A app.celery_app worker --concurrency=4 --loglevel=info
+
+  celery-beat:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: celery -A app.celery_app beat --loglevel=info
 
 volumes:
   postgres_data:

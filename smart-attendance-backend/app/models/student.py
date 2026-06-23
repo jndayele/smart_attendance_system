@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 from app.database import Base
 
 class Student(Base):
@@ -18,8 +19,8 @@ class Student(Base):
     name = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=True)
     
-    # Stores ArcFace 512-dimensional float vector as a JSON array
-    face_encoding = Column(JSON, nullable=True)
+    # Stores ArcFace 512-dimensional float vector
+    face_encoding = Column(Vector(512), nullable=True)
     face_registered = Column(Boolean, default=False)
     profile_picture_url = Column(String(500), nullable=True)
     

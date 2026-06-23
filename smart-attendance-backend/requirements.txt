@@ -15,6 +15,7 @@ redis==5.0.4                     # async Redis client (aioredis API included)
 celery==5.3.6                    # distributed task queue
 flower==2.0.1                    # Celery monitoring dashboard
 python-socketio[asyncio_client]==5.11.2  # already present; client needed for Redis emit
+fastapi-limiter==0.1.6
 
 # ─── Auth & Security ─────────────────────────────────────────────────────────
 pydantic==2.7.1

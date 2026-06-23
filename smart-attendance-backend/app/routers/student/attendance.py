@@ -9,10 +9,13 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query, Form
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+import base64
+from fastapi_limiter.depends import RateLimiter
 
 from app.database import get_db
 from app.dependencies import require_student
@@ -249,7 +252,7 @@ async def _mark_attendance(db: AsyncSession, student, session, course, method: s
 
 
 
-@router.post("/mark/face", response_model=AttendanceMarkResponse, summary="Step 4A: Face Scan")
+@router.post("/mark/face", summary="Step 4A: Face Scan (Async)", dependencies=[Depends(RateLimiter(times=3, seconds=60))])
 async def mark_face(
     session_id: str = Form(...),
     face_image: UploadFile = File(...),
@@ -287,37 +290,42 @@ async def mark_face(
         raise HTTPException(status_code=400, detail="Face not registered. Contact your admin.")
 
     image_bytes = await face_image.read()
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-    # ── Async face validation — runs in thread-pool, won't block event loop ──
-    val_res = await FaceService.validate_photo_requirements_async(image_bytes)
-    if not val_res["valid"]:
-        raise HTTPException(status_code=400, detail=val_res["error"])
+    # ── Async face verification — offloaded to Celery ───────────────────
+    from app.tasks.face_tasks import verify_face_async
+    task = verify_face_async.delay(image_b64, str(student.id), str(session.id))
+    
+    return JSONResponse(status_code=202, content={
+        "success": True, 
+        "message": "Face scan processing. Please wait...", 
+        "task_id": task.id
+    })
 
-    try:
-        # ── Async face verification — runs in thread-pool ───────────────────
-        match_res = await FaceService.verify_face_from_encoding_async(image_bytes, student.face_encoding)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Face verification error: {e}")
-        raise HTTPException(status_code=500, detail="Face verification failed. Please try again.")
-
-
-    if not match_res["verified"]:
-        if match_res.get("liveness_failed"):
-            return AttendanceMarkResponse(
-                success=False,
-                status="liveness_failed",
-                message="Liveness check failed. Please ensure you are a real person in front of the camera.",
-                liveness_failed=True
-            )
-        return AttendanceMarkResponse(
-            success=False,
-            status="face_failed",
-            message=f"Face verification failed. Confidence: {match_res['confidence']:.1f}%. Required: {match_res['threshold_confidence']}%. Try again or use QR code."
-        )
-
-    return await _mark_attendance(db, student, session, course, "face")
+@router.get("/mark/face/status/{task_id}", summary="Check Face Scan Status")
+async def check_face_status(task_id: str, current_user: User = Depends(require_student)):
+    from app.tasks.face_tasks import verify_face_async
+    from celery.result import AsyncResult
+    
+    task_result = AsyncResult(task_id)
+    if not task_result.ready():
+        return {"status": "processing"}
+        
+    result = task_result.result
+    if task_result.successful():
+        if result.get("verified"):
+            return {
+                "status": "success",
+                "message": "Attendance marked successfully.",
+                "attendance_id": result.get("attendance_id")
+            }
+        else:
+            return {
+                "status": "failed",
+                "message": result.get("error", "Face verification failed.")
+            }
+    
+    return {"status": "failed", "message": "Task execution failed."}
 
 
 @router.post("/mark/qr", response_model=AttendanceMarkResponse, summary="Step 4B: QR Scan")
