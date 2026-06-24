@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.celery_app import celery_app
 from app.database import init_db
 from app.services.face_service import FaceService
 from app.routers import auth

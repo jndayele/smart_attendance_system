@@ -24,8 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 def _run(coro):
-    """Run an async coroutine synchronously inside a Celery worker."""
+    """Run an async coroutine synchronously inside a Celery worker.
+    Email tasks use aiosmtplib, not SQLAlchemy, so no engine setup is needed."""
     return asyncio.run(coro)
+
 
 
 @shared_task(

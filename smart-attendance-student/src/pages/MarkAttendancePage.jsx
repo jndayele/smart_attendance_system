@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Radio, ArrowLeft, Lock, ScanFace, QrCode, CheckCircle,
@@ -225,7 +225,7 @@ function MethodStep() {
 }
 
 function FaceScanStep() {
-  const { session, setAttendanceStep, setSelectedMethod, refreshSession } = useSession();
+  const { session, setAttendanceStep, setSelectedMethod, refreshSession, setAttendancePct } = useSession();
   const [scanState, setScanState] = useState('scanning');
   const [failed, setFailed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -243,13 +243,28 @@ function FaceScanStep() {
       if (!imageFile) throw new Error("Failed to capture image from camera.");
 
       const res = await studentAPI.markAttendanceFace(session.session_id, imageFile);
-      if (res.success) {
-        setScanState('done');
-        // Let context pull the updated session before moving so it shows success instantly
-        await refreshSession();
-        setAttendanceStep('success');
+      if (res.success && res.task_id) {
+        // Poll for task completion
+        let status = 'processing';
+        let result = null;
+        while (status === 'processing') {
+          await new Promise(r => setTimeout(r, 1000)); // wait 1 second
+          result = await studentAPI.checkFaceStatus(res.task_id);
+          status = result.status;
+        }
+
+        if (status === 'success') {
+          setScanState('done');
+          // Refresh session to update already_marked state for future polls
+          await refreshSession();
+          // The face task result doesn't return pct; set null so SuccessStep hides the bar
+          setAttendancePct(null);
+          setAttendanceStep('success');
+        } else {
+          throw new Error(result.message || "Verification failed");
+        }
       } else {
-        throw new Error(res.message || "Verification failed");
+        throw new Error(res.message || "Failed to initiate scan");
       }
     } catch (err) {
       console.error(err);
@@ -353,7 +368,7 @@ function FaceScanStep() {
 }
 
 function QRScanStep() {
-  const { session, setAttendanceStep, setSelectedMethod, refreshSession } = useSession();
+  const { session, setAttendanceStep, setSelectedMethod, refreshSession, setAttendancePct } = useSession();
   const [scanState, setScanState] = useState('scanning');
   const [errorMsg, setErrorMsg] = useState('');
   const cameraRef = React.useRef(null);
@@ -374,6 +389,7 @@ function QRScanStep() {
           const res = await studentAPI.markAttendanceQR(session.session_id, qrData);
           if (res.success) {
             setScanState('done');
+            setAttendancePct(res.updated_attendance_pct ?? null);
             await refreshSession();
             setAttendanceStep('success');
           } else {
@@ -453,12 +469,14 @@ function QRScanStep() {
 }
 
 function SuccessStep() {
-  const { session, selectedMethod, clearSession } = useSession();
+  const { session, selectedMethod, clearSession, attendancePct } = useSession();
   const navigate = useNavigate();
   const isFace = selectedMethod === 'face';
   const methodColor = isFace ? 'var(--accent-purple)' : 'var(--accent-blue)';
   const MethodIcon = isFace ? ScanFace : QrCode;
   const methodLabel = isFace ? 'Face Scan' : 'QR Code';
+  const displayPct = attendancePct != null ? Math.round(attendancePct) : null;
+  const isGood = displayPct != null && displayPct >= 75;
 
   const handleReturn = () => {
     clearSession();
@@ -509,17 +527,19 @@ function SuccessStep() {
       </div>
 
       {/* Updated stat */}
+      {displayPct != null && (
       <div className="rounded-xl p-4 mb-6"
-        style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
+        style={{ backgroundColor: isGood ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)', border: `1px solid ${isGood ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'}` }}>
         <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>Updated Attendance</p>
-        <p className="text-3xl font-semibold transition-all" style={{ color: 'var(--accent-primary)' }}>79%</p>
+        <p className="text-3xl font-semibold transition-all" style={{ color: isGood ? 'var(--accent-green)' : 'var(--accent-primary)' }}>{displayPct}%</p>
         <div className="h-1.5 rounded-full mt-2" style={{ backgroundColor: 'var(--bg-raised)' }}>
-          <div className="h-full rounded-full transition-all duration-1000" style={{ width: '79%', backgroundColor: 'var(--accent-primary)' }} />
+          <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${displayPct}%`, backgroundColor: isGood ? 'var(--accent-green)' : 'var(--accent-primary)' }} />
         </div>
-        <p className="text-xs mt-2" style={{ color: 'var(--accent-primary)' }}>
-          You're now at 79%. Keep attending to stay above 75%.
+        <p className="text-xs mt-2" style={{ color: isGood ? 'var(--accent-green)' : 'var(--accent-primary)' }}>
+          {isGood ? `You're at ${displayPct}%. Keep it up!` : `You're at ${displayPct}%. Attend more to reach 75%.`}
         </p>
       </div>
+      )}
 
       <button onClick={handleReturn}
         className="w-full h-12 rounded-lg font-semibold text-sm transition-all hover:opacity-90 active:scale-[0.98]"
@@ -536,11 +556,12 @@ function SuccessStep() {
 }
 
 function AlreadyMarkedStep() {
-  const { session, selectedMethod, clearSession } = useSession();
+  const { session, clearSession } = useSession();
   const navigate = useNavigate();
-  const isFace = selectedMethod === 'face';
-  const methodColor = isFace ? 'var(--accent-purple)' : 'var(--accent-blue)';
-  const MethodIcon = isFace ? ScanFace : QrCode;
+
+  const checkedInTime = session?.started_at
+    ? new Date(session.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : '—';
 
   return (
     <div className="text-center animate-fade-in-up">
@@ -553,11 +574,11 @@ function AlreadyMarkedStep() {
       <div className="rounded-xl p-4 mb-6 text-left"
         style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Course</span><span style={{ color: 'var(--text-primary)' }}>{session?.courseName}</span></div>
-          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Checked in at</span><span style={{ color: 'var(--text-primary)' }}>10:14 AM</span></div>
-          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Method</span>
-            <span className="flex items-center gap-1.5" style={{ color: methodColor }}>
-              <MethodIcon size={14} /> {isFace ? 'Face Scan' : 'QR Code'}
+          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Course</span><span style={{ color: 'var(--text-primary)' }}>{session?.course_title} — {session?.course_code}</span></div>
+          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Session started</span><span style={{ color: 'var(--text-primary)' }}>{checkedInTime}</span></div>
+          <div className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>Status</span>
+            <span className="flex items-center gap-1.5" style={{ color: 'var(--accent-green)' }}>
+              <CheckCircle size={14} /> Present
             </span>
           </div>
         </div>

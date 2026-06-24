@@ -68,6 +68,10 @@ export const studentAPI = {
       body: formData,
     });
   },
+
+  checkFaceStatus(taskId) {
+    return request(`/student/attendance/mark/face/status/${taskId}`);
+  },
   
   markAttendanceQR(sessionId, qrData) {
     return request('/student/attendance/mark/qr', {

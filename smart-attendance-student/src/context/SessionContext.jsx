@@ -11,6 +11,7 @@ export function SessionProvider({ children }) {
   const [attendanceStep, setAttendanceStep] = useState('notify');
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [attendancePct, setAttendancePct] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchLiveSession = useCallback(async () => {
@@ -24,11 +25,11 @@ export function SessionProvider({ children }) {
       if (data.live_session) {
         setSession(data.live_session);
         setRemainingSeconds(data.live_session.seconds_remaining || 0);
-        // If already marked, skip straight to success
+        // If already marked, skip straight to already_marked screen
         if (data.live_session.already_marked) {
-          setAttendanceStep('success');
-        } else if (attendanceStep === 'notify' || attendanceStep === 'success') {
-          // Reset to notify if a new session appeared
+          setAttendanceStep('already_marked');
+        } else if (attendanceStep === 'notify' || attendanceStep === 'success' || attendanceStep === 'already_marked') {
+          // Reset to notify only if the student isn't mid-flow
           setAttendanceStep('notify');
         }
       } else {
@@ -80,6 +81,7 @@ export function SessionProvider({ children }) {
     setAttendanceStep('notify');
     setSelectedMethod(null);
     setRemainingSeconds(0);
+    setAttendancePct(null);
   }, []);
 
   const formatTime = (secs) => {
@@ -101,7 +103,9 @@ export function SessionProvider({ children }) {
       isUrgent: remainingSeconds > 0 && remainingSeconds < 120,
       refreshSession: fetchLiveSession,
       clearSession,
-      loading
+      loading,
+      attendancePct,
+      setAttendancePct,
     }}>
       {children}
     </SessionContext.Provider>
