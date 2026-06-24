@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { studentAPI } from '../api/studentAPI';
 import { useSocket } from './SocketContext';
+import { getToken } from '../api/api';
 
 const SessionContext = createContext(null);
 
@@ -13,6 +14,11 @@ export function SessionProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const fetchLiveSession = useCallback(async () => {
+    // Don't attempt if no token is stored — user is not logged in yet
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     try {
       const data = await studentAPI.getLiveSession();
       if (data.live_session) {

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, RoleEnum
 from app.utils.security import decode_token
 from app.core.redis import cache_get, cache_set, cache_delete
 
@@ -63,11 +63,11 @@ def _serialize_user(user: User) -> dict:
 
 def _deserialize_user(data: dict) -> User:
     """Reconstruct a lightweight User-like object from a cached dict."""
-    u = User.__new__(User)
+    u = User()
     u.id = data["id"]
     u.email = data["email"]
     u.display_name = data.get("display_name")
-    u.role = data["role"]
+    u.role = RoleEnum(data["role"])  # convert stored string back to enum
     u.is_active = data["is_active"]
     u.is_verified = data["is_verified"]
     u.failed_attempts = data.get("failed_attempts", 0)

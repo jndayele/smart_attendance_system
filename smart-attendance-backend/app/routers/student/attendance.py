@@ -286,7 +286,8 @@ async def mark_face(
     if attempt.is_locked:
         raise HTTPException(status_code=403, detail="You are locked out of this session.")
 
-    if not student.face_registered or not student.face_encoding:
+    # face_encoding is a numpy array — use `is None` to avoid numpy boolean ambiguity error
+    if not student.face_registered or student.face_encoding is None:
         raise HTTPException(status_code=400, detail="Face not registered. Contact your admin.")
 
     image_bytes = await face_image.read()

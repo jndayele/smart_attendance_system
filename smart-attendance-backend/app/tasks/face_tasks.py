@@ -82,7 +82,7 @@ def verify_face_async(self, image_b64: str, student_id: str, session_id: str):
             async with AsyncSessionLocal() as db:
                 res_s = await db.execute(select(Student).where(Student.id == student_id))
                 student = res_s.scalars().first()
-                if not student or not student.face_registered or not student.face_encoding:
+                if not student or not student.face_registered or student.face_encoding is None:
                     return None, None, None, "Face not registered."
 
                 res_sess = await db.execute(

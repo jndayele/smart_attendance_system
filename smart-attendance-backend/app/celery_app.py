@@ -15,6 +15,7 @@ Celery Beat (periodic tasks) launch:
 Flower monitoring dashboard:
     celery -A app.celery_app flower --port=5555
 """
+import ssl
 from celery import Celery
 from celery.schedules import crontab
 
@@ -33,6 +34,12 @@ celery_app = Celery(
         "app.tasks.scheduled_tasks",
     ],
 )
+
+# ─── SSL Fix for Upstash (rediss://) ──────────────────────────────────────────
+if settings.CELERY_BROKER_URL and settings.CELERY_BROKER_URL.startswith("rediss://"):
+    celery_app.conf.broker_use_ssl = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+if settings.CELERY_RESULT_BACKEND and settings.CELERY_RESULT_BACKEND.startswith("rediss://"):
+    celery_app.conf.redis_backend_use_ssl = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
 
 # ─── Serialisation ────────────────────────────────────────────────────────────
 celery_app.conf.update(

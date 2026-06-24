@@ -26,8 +26,12 @@ import socketio
 
 logger = logging.getLogger(__name__)
 
+from app.config import get_settings
+
+settings = get_settings()
+
 # ─── CORS origins ─────────────────────────────────────────────────────────────
-_cors_env = os.environ.get("CORS_ORIGINS", "")
+_cors_env = settings.CORS_ORIGINS if hasattr(settings, "CORS_ORIGINS") else os.environ.get("CORS_ORIGINS", "")
 _extra_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
 ALLOWED_ORIGINS = list(set([
@@ -41,11 +45,16 @@ ALLOWED_ORIGINS = list(set([
 ]))
 
 # ─── Redis-backed message queue (multi-worker safe) ───────────────────────────
-_redis_url = os.environ.get("REDIS_URL", "")
+_redis_url = settings.REDIS_URL if hasattr(settings, "REDIS_URL") else os.environ.get("REDIS_URL", "")
 
 if _redis_url:
     logger.info(f"[SocketIO] Using AsyncRedisManager at {_redis_url}")
-    _client_manager = socketio.AsyncRedisManager(_redis_url)
+    # Fix for rediss:// URL to enforce strict SSL certificate verification
+    redis_options = {}
+    if _redis_url.startswith("rediss://"):
+        redis_options["ssl_cert_reqs"] = "required"
+        
+    _client_manager = socketio.AsyncRedisManager(_redis_url, redis_options=redis_options)
 else:
     logger.warning(
         "[SocketIO] REDIS_URL not set — using in-memory manager. "
