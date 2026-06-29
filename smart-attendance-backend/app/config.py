@@ -39,15 +39,10 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
 
-    # Email
-    MAIL_USERNAME: str
-    MAIL_PASSWORD: str
+    # Email (Brevo REST API — works on Railway free tier)
+    BREVO_API_KEY: str
     MAIL_FROM: str
     MAIL_FROM_NAME: str = "Smart Attendance System"
-    MAIL_SERVER: str
-    MAIL_PORT: int = 587
-    MAIL_STARTTLS: bool = True
-    MAIL_SSL_TLS: bool = False
 
     # Face Recognition
     FACE_CONFIDENCE_THRESHOLD: int = 45

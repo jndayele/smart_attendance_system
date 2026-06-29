@@ -1,35 +1,39 @@
 import logging
 from typing import List, Dict, Any
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+import asyncio
+from functools import partial
+
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME,
-    MAIL_PASSWORD=settings.MAIL_PASSWORD,
-    MAIL_FROM=settings.MAIL_FROM,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_SERVER,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    MAIL_STARTTLS=settings.MAIL_STARTTLS,
-    MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
-)
+# ─── Brevo REST API client ────────────────────────────────────────────────────
+# Uses HTTPS/443 — works on Railway free tier (no SMTP port restrictions).
 
-fm = FastMail(conf)
+def _get_brevo_api():
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key['api-key'] = settings.BREVO_API_KEY
+    return sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+
 
 async def _send_html_email(subject: str, email_to: str, html_content: str):
-    message = MessageSchema(
+    """Send transactional email via Brevo REST API (HTTPS, Railway-compatible)."""
+    api_instance = _get_brevo_api()
+    send_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": email_to}],
+        sender={"name": settings.MAIL_FROM_NAME, "email": settings.MAIL_FROM},
         subject=subject,
-        recipients=[email_to],
-        body=html_content,
-        subtype=MessageType.html
+        html_content=html_content
     )
     try:
-        await fm.send_message(message)
+        # Run blocking SDK call in a thread so we don't block the event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, partial(api_instance.send_transac_email, send_email))
+    except ApiException as e:
+        logger.error(f"Brevo API error sending to {email_to}: {e}")
     except Exception as e:
         logger.error(f"Failed to send email to {email_to}: {e}")
 
