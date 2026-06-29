@@ -1,6 +1,5 @@
 import React from 'react';
 import { useAppConfig } from '@/context/AppContext';
-import { Bell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function TopHeader({ title, breadcrumbs = [] }) {
@@ -51,15 +50,6 @@ export default function TopHeader({ title, breadcrumbs = [] }) {
             </span>
           </div>
         )}
-
-        <button
-          onClick={() => navigate('/notifications')}
-          className="relative p-2 rounded-lg transition-colors hover:bg-white/5"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          <Bell size={18} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--accent-red)' }} />
-        </button>
 
         {/* Profile avatar — real initials from /auth/me */}
         <div

@@ -17,7 +17,6 @@ import AcademicYearsPage from '@/pages/AcademicYearsPage';
 import LecturersPage from '@/pages/LecturersPage';
 import StudentsPage from '@/pages/StudentsPage';
 import ReportsPage from '@/pages/ReportPage';
-import NotificationsPage from '@/pages/NotificationsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import { SocketProvider } from '@/context/SocketContext';
 
@@ -67,7 +66,6 @@ function AppRoutes() {
         <Route path="/lecturers" element={<LecturersPage />} />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

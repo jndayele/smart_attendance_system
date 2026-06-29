@@ -38,7 +38,6 @@ const navSections = [
   {
     label: 'SYSTEM',
     items: [
-      { label: 'Notifications', path: '/notifications', icon: Bell },
       { label: 'Settings', path: '/settings', icon: Settings },
     ],
   },

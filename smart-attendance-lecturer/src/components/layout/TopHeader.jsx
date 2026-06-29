@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppConfig } from '../../context/AppContext';
-import { Bell, Menu, GraduationCap } from 'lucide-react';
+import { Menu, GraduationCap } from 'lucide-react';
 import MobileDrawer from './MobileDrawer';
 
 export default function TopHeader() {
@@ -32,17 +32,7 @@ export default function TopHeader() {
           </span>
         </div>
 
-        {/* Desktop/Tablet: spacer */}
         <div className="hidden md:block flex-1" />
-
-        {/* Notification bell */}
-        <button onClick={() => navigate('/notifications')}
-          className="relative p-2 rounded-lg transition-colors hover:bg-[var(--bg-raised)]"
-          style={{ color: 'var(--text-secondary)' }}>
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-            style={{ backgroundColor: 'var(--accent-red)' }} />
-        </button>
       </header>
 
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />

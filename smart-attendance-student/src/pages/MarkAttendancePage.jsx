@@ -555,6 +555,40 @@ function SuccessStep() {
   );
 }
 
+function SessionEndedStep() {
+  const { session, clearSession } = useSession();
+  const navigate = useNavigate();
+
+  return (
+    <div className="text-center animate-fade-in-up">
+      <div className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.25)' }}>
+        <Lock size={34} style={{ color: 'var(--accent-red)' }} />
+      </div>
+      <h2 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Session Has Ended</h2>
+      <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
+        Your lecturer has closed the attendance window.
+      </p>
+      {session && (
+        <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
+          {session.course_title} — {session.course_code}
+        </p>
+      )}
+      <div className="rounded-xl p-4 mb-6 text-left"
+        style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          The camera has been stopped automatically. If you were present in the classroom, speak to your lecturer about a manual override.
+        </p>
+      </div>
+      <button onClick={() => { clearSession(); navigate('/dashboard'); }}
+        className="w-full h-12 rounded-lg font-semibold text-sm transition-all hover:opacity-90 active:scale-[0.98]"
+        style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
+        Return to Dashboard
+      </button>
+    </div>
+  );
+}
+
 function AlreadyMarkedStep() {
   const { session, clearSession } = useSession();
   const navigate = useNavigate();
@@ -624,6 +658,7 @@ export default function MarkAttendancePage() {
     qr: QRScanStep,
     success: SuccessStep,
     already_marked: AlreadyMarkedStep,
+    session_ended: SessionEndedStep,
   };
 
   if (!isSessionActive && attendanceStep === 'notify') {

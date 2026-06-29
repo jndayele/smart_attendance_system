@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Bell, GraduationCap } from 'lucide-react';
+import { ArrowLeft, GraduationCap } from 'lucide-react';
 import { useAppConfig } from '../../context/AppContext';
 
 const DRILL_DOWN_PATHS = ['/mark-attendance', '/profile', '/history'];
@@ -40,13 +40,7 @@ export default function TopHeader() {
       {/* Desktop: spacer */}
       <div className="hidden lg:block flex-1" />
 
-      {/* Bell */}
       <div className="w-10 flex justify-end">
-        <button className="relative p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--text-secondary)' }}>
-          <Bell size={20} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--accent-red)' }} />
-        </button>
       </div>
     </header>
   );

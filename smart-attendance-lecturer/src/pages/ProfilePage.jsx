@@ -72,7 +72,6 @@ export default function ProfilePage() {
   const tabs = [
     { key: 'personal', label: 'Personal Info' },
     { key: 'security', label: 'Security' },
-    { key: 'notifications', label: 'Notifications' },
     { key: 'preferences', label: 'Preferences' },
   ];
 
@@ -336,28 +335,6 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Notifications */}
-            {activeTab === 'notifications' && (
-              <div className="space-y-3">
-                <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Email me when...</p>
-                {[
-                  { key: 'alert_student_below_threshold', label: 'A student falls below threshold' },
-                  { key: 'session_not_closed_reminder', label: 'A session has not been closed after 2 hours' },
-                  { key: 'weekly_summary', label: 'Weekly attendance summary every Monday' },
-                  { key: 'new_student_enrolled', label: 'New student enrolled in my course' },
-                ].map(p => (
-                  <div key={p.key} className="flex items-center justify-between py-2">
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{p.label}</span>
-                    <button onClick={() => toggleNotifPref(p.key)}
-                      className="w-10 h-5 rounded-full transition-colors relative"
-                      style={{ backgroundColor: notifPrefs[p.key] ? 'var(--accent-primary)' : 'var(--bg-raised)' }}>
-                      <div className="absolute w-4 h-4 rounded-full bg-white top-0.5 transition-all"
-                        style={{ left: notifPrefs[p.key] ? '22px' : '2px' }} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* Preferences */}
             {activeTab === 'preferences' && (

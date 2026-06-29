@@ -21,7 +21,6 @@ const navItems = [
     { path: '/reports', label: 'Attendance Reports', icon: BarChart3 },
   ]},
   { section: 'ACCOUNT', items: [
-    { path: '/notifications', label: 'Notifications', icon: Bell, badge: 4 },
     { path: '/profile', label: 'Profile & Settings', icon: UserCircle },
   ]},
 ];

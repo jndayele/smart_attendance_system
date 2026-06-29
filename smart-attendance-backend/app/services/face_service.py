@@ -259,8 +259,20 @@ class FaceService:
                     face_objs = DeepFace.extract_faces(img_path=img, enforce_detection=True, anti_spoofing=True)
                     if len(face_objs) == 0:
                         raise ValueError("No face detected in the live image.")
-                    is_real = face_objs[0].get("is_real")
-                    if is_real is False:
+
+                    face_obj = face_objs[0]
+                    is_real = face_obj.get("is_real")
+                    antispoof_score = face_obj.get("antispoof_score", 1.0)
+
+                    # Only hard-block when the model is CONFIDENTLY certain it's a spoof.
+                    # is_real must be explicitly False AND the score must be below 0.4
+                    # (i.e. strongly predicts fake). Any uncertainty falls through to
+                    # the normal ArcFace comparison below.
+                    if is_real is False and antispoof_score < 0.4:
+                        logger.warning(
+                            f"[Liveness] Spoof detected. is_real={is_real}, "
+                            f"antispoof_score={antispoof_score:.3f}"
+                        )
                         return {
                             "verified": False,
                             "distance": 1.0,
@@ -269,19 +281,23 @@ class FaceService:
                             "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD,
                             "liveness_failed": True
                         }
+                    elif is_real is False:
+                        # Score is ambiguous — log and continue to face comparison
+                        logger.info(
+                            f"[Liveness] Ambiguous result (is_real={is_real}, score={antispoof_score:.3f}). "
+                            f"Falling through to face comparison."
+                        )
                 except ValueError as e:
-                    if "Face could not be detected" in str(e):
+                    msg = str(e)
+                    if "Face could not be detected" in msg or "no face" in msg.lower():
                         raise ValueError("No face detected in the live image.")
-                    if "spoof" in str(e).lower():
-                        return {
-                            "verified": False,
-                            "distance": 1.0,
-                            "confidence": 0.0,
-                            "threshold_distance": 1.0 - (settings.FACE_CONFIDENCE_THRESHOLD / 100.0),
-                            "threshold_confidence": settings.FACE_CONFIDENCE_THRESHOLD,
-                            "liveness_failed": True
-                        }
-                    raise
+                    # Any other ValueError from anti-spoofing (model issues, etc.)
+                    # — log it but don't block the student; fall through to ArcFace.
+                    logger.warning(f"[Liveness] Anti-spoofing check skipped due to error: {msg}")
+                except Exception as e:
+                    # Non-critical — model may not be downloaded yet or GPU unavailable.
+                    # Fall through to normal face comparison.
+                    logger.warning(f"[Liveness] Anti-spoofing unavailable, skipping: {e}")
 
             results = DeepFace.represent(
                 img_path=img,

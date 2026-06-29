@@ -9,6 +9,7 @@ sqlalchemy==2.0.30
 asyncpg==0.29.0
 alembic==1.13.1
 pgvector==0.2.5                  # pgvector Python client for ORM integration
+psycopg2-binary>=2.9             # Sync PostgreSQL driver required by Celery tasks
 
 # ─── Redis + Celery (scalability layer) ──────────────────────────────────────
 redis==5.0.4                     # async Redis client (aioredis API included)

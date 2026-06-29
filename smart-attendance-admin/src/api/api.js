@@ -50,6 +50,7 @@ async function request(path, options = {}, withAuth = false) {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
+    cache: 'no-store', // Prevent stale data across navigation
   });
 
   let data;

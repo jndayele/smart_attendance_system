@@ -14,7 +14,6 @@ const navItems = [
   { path: '/session/active', label: 'Active Session', icon: Radio, liveIndicator: true },
   { path: '/sessions', label: 'Session History', icon: History },
   { path: '/reports', label: 'Attendance Reports', icon: BarChart3 },
-  { path: '/notifications', label: 'Notifications', icon: Bell, badge: 4 },
   { path: '/profile', label: 'Profile & Settings', icon: UserCircle },
 ];
 

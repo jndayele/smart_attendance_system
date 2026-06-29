@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppConfig } from '@/context/AppContext';
 import { useSocket } from '@/context/SocketContext';
+import { useSocketRefresh } from '@/hooks/useSocketRefresh';
 import TopHeader from '@/components/layout/TopHeader';
 import StatCard from '@/components/ui-custom/StatCards';
 import AttendanceTrendChart from '@/components/charts/AttendanceTrendChart';
@@ -45,14 +46,6 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData();
 
-    if (!socket) return;
-    
-    const handleGlobalUpdate = () => {
-      fetchDashboardData();
-    };
-
-    socket.on('global_update', handleGlobalUpdate);
-
     // Check if an academic year has been set up
     const dismissed = sessionStorage.getItem('acad_banner_dismissed');
     if (!dismissed) {
@@ -62,11 +55,12 @@ export default function DashboardPage() {
         }
       }).catch(() => {});
     }
+  }, []);
 
-    return () => {
-      socket.off('global_update', handleGlobalUpdate);
-    };
-  }, [socket]);
+  // Auto-refresh data when global events (like attendance marked) happen
+  useSocketRefresh(() => {
+    fetchDashboardData();
+  }, []);
 
   const dismissBanner = () => {
     setShowAcadBanner(false);

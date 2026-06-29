@@ -29,10 +29,10 @@ export default function SessionBanner() {
             Your lecturer has started an attendance session for
           </p>
           <p className="text-base font-semibold mt-1" style={{ color: 'var(--text-primary)' }}>
-            {session.courseName} — {session.courseCode}
+            {session.course_title} — {session.course_code}
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            Lecturer: {session.lecturerName}
+            Lecturer: {session.lecturer_name}
           </p>
         </div>
         <div className="text-right flex-shrink-0">

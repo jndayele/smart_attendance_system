@@ -20,7 +20,6 @@ import CourseDetailPage from './pages/CourseDetailPage';
 import ActiveSessionPage from './pages/ActiveSessionPage';
 import SessionHistoryPage from './pages/SessionHistoryPage';
 import ReportsPage from './pages/ReportsPage';
-import NotificationsPage from './pages/NotificationsPage';
 import ProfilePage from './pages/ProfilePage';
 
 function LecturerProtectedRoute({ children }) {
@@ -56,7 +55,6 @@ function AppRoutes() {
         <Route path="/session/active" element={<ActiveSessionPage />} />
         <Route path="/sessions" element={<SessionHistoryPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
 

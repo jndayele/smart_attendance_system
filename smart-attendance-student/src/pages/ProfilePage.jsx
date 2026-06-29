@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Lock, Check, Shield, Camera, Bell, User, Eye, EyeOff, AlertTriangle, Loader2
+  Lock, Check, Shield, Camera, User, Eye, EyeOff, AlertTriangle, Loader2
 } from 'lucide-react';
 import { useStudentAuth } from '../context/AuthContext';
 import { useAppConfig } from '../context/AppContext';
@@ -11,7 +11,6 @@ const TABS = [
   { id: 'info', label: 'Personal Info', icon: User },
   { id: 'security', label: 'Security', icon: Shield },
   { id: 'face', label: 'Face Photo', icon: Camera },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
 export default function ProfilePage() {
@@ -119,7 +118,6 @@ export default function ProfilePage() {
             {activeTab === 'info' && <PersonalInfoTab auth={auth} addToast={addToast} />}
             {activeTab === 'security' && <SecurityTab addToast={addToast} />}
             {activeTab === 'face' && <FacePhotoTab addToast={addToast} />}
-            {activeTab === 'notifications' && <NotificationsTab addToast={addToast} />}
           </div>
         </div>
       </div>
@@ -330,66 +328,6 @@ function FacePhotoTab({ addToast }) {
           Updating your face photo will replace your current encoding. You may not be able to use face scan until processing completes (usually under 1 minute).
         </p>
       </div>
-    </>
-  );
-}
-
-function NotificationsTab({ addToast }) {
-  const [prefs, setPrefs] = useState({
-    dropBelow80: true,
-    dropBelow75: true,
-    sessionStart: true,
-    sessionEnding: true,
-    weeklySummary: false,
-  });
-
-  const toggle = (key) => {
-    if (key === 'dropBelow75') return; // locked
-    setPrefs(p => ({ ...p, [key]: !p[key] }));
-  };
-
-  const ITEMS = [
-    { key: 'dropBelow80', label: 'My attendance drops below 80%', desc: 'Get notified early to take action', locked: false },
-    { key: 'dropBelow75', label: 'My attendance drops below 75%', desc: 'Required by institution policy', locked: true },
-    { key: 'sessionStart', label: 'A new attendance session starts', desc: 'Be the first to know when your lecturer starts a session', locked: false },
-    { key: 'sessionEnding', label: 'A session is ending soon', desc: 'Reminder before session closes', locked: false },
-    { key: 'weeklySummary', label: 'Weekly attendance summary every Monday', desc: 'Get a weekly recap of your attendance', locked: false },
-  ];
-
-  return (
-    <>
-      <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Email Notification Preferences</h3>
-      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Email me when...</p>
-
-      <div className="space-y-4 mb-6">
-        {ITEMS.map(item => (
-          <div key={item.key} className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.label}</p>
-                {item.locked && <Lock size={12} style={{ color: 'var(--text-muted)' }} />}
-              </div>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
-            </div>
-            <button onClick={() => toggle(item.key)}
-              className={`w-10 h-5 rounded-full relative transition-all flex-shrink-0 mt-1 ${item.locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-              style={{ backgroundColor: prefs[item.key] ? 'var(--accent-primary)' : 'var(--bg-raised)' }}>
-              <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
-                style={{ left: prefs[item.key] ? '22px' : '2px' }} />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-        Critical threshold alerts cannot be disabled as per institution policy.
-      </p>
-
-      <button onClick={() => addToast('Notification preferences saved.', 'success')}
-        className="h-10 px-6 rounded-lg font-semibold text-sm transition-all hover:opacity-90"
-        style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--bg-deep)' }}>
-        Save Preferences
-      </button>
     </>
   );
 }
