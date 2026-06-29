@@ -102,5 +102,29 @@ export const studentAPI = {
     
     const queryString = queryParams.toString();
     return request(`/student/courses/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getProfile() {
+    return request('/student/profile/');
+  },
+
+  changePassword(currentPassword, newPassword, confirmPassword) {
+    return request('/student/profile/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword
+      })
+    });
+  },
+
+  updateFacePhoto(file) {
+    const formData = new FormData();
+    formData.append('face_photo', file);
+    return request('/student/profile/face-photo', {
+      method: 'POST',
+      body: formData
+    });
   }
 };

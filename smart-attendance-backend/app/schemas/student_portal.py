@@ -213,6 +213,8 @@ class StudentProfileResponse(BaseModel):
     face_registered: bool
     is_active: bool
     last_login: Optional[datetime] = None
+    last_login_device: Optional[str] = None
+    last_login_location: Optional[str] = None
     created_at: datetime
     enrolled_courses: List[StudentCourseCard]
     overall_stats: StudentDashboardStats

@@ -75,6 +75,8 @@ async def get_profile(
         face_registered=student.face_registered,
         is_active=current_user.is_active,
         last_login=current_user.last_login,
+        last_login_device=current_user.last_login_device,
+        last_login_location=current_user.last_login_location,
         created_at=student.created_at,
         enrolled_courses=dashboard_data.enrolled_courses,
         overall_stats=dashboard_data.stats
@@ -162,10 +164,20 @@ async def update_face_photo(
         
     try:
         encoding = FaceService.extract_face_encoding(image_bytes)
+        
+        # If student already has a face registered, make sure the new photo is the SAME PERSON
+        if student.face_encoding:
+            # We must use the image_bytes directly for the verify function
+            # Since the verify function expects raw bytes or numpy array
+            verify_res = await FaceService.verify_face_from_encoding_async(image_bytes, student.face_encoding)
+            if not verify_res["verified"]:
+                raise ValueError("The new photo does not match your currently registered face. You cannot register a completely different person.")
+                
+        # Check for duplicates across other students
         await FaceService.check_duplicate_face(db, encoding, exclude_student_id=student.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as e:
         raise HTTPException(status_code=500, detail="Face encoding failed. Please try again.")
 
     student.face_encoding = encoding
