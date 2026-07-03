@@ -155,8 +155,13 @@ async def change_password(
     if len(data.new_password) < 8 or not re.search(r"\d", data.new_password) or not re.search(r"[!@#$%^&*(),.?\":{}|<>]", data.new_password):
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters long and contain at least one number and one special character")
 
-    current_user.password_hash = hash_password(data.new_password)
+    res = await db.execute(select(User).filter(User.id == current_user.id))
+    db_user = res.scalars().first()
+    db_user.password_hash = hash_password(data.new_password)
     await db.commit()
+
+    from app.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(current_user.id))
 
     await NotificationService.log_audit_action(current_user.id, "lecturer_password_changed", "user", current_user.id, None, None, db)
 

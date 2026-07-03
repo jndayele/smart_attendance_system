@@ -215,8 +215,13 @@ async def update_admin_password(
     if not verify_password(pwd_data.current_password, admin.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect current password")
         
-    admin.password_hash = hash_password(pwd_data.new_password)
+    res = await db.execute(select(User).filter(User.id == admin.id))
+    db_admin = res.scalars().first()
+    db_admin.password_hash = hash_password(pwd_data.new_password)
     await db.commit()
+    
+    from app.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(admin.id))
     
     await NotificationService.log_audit_action(
         performed_by=admin.id, action="admin_password_changed", entity_type="user", 

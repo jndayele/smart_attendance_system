@@ -133,8 +133,13 @@ async def change_password(
     if not (has_digit and has_special):
         raise HTTPException(status_code=422, detail="Password must contain at least one number and one special character.")
 
-    current_user.password_hash = hash_password(req.new_password)
+    res = await db.execute(select(User).filter(User.id == current_user.id))
+    db_user = res.scalars().first()
+    db_user.password_hash = hash_password(req.new_password)
     await db.commit()
+
+    from app.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(current_user.id))
 
     await NotificationService.log_audit_action(
         performed_by=current_user.id,
