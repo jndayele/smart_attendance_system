@@ -36,7 +36,7 @@ from app.services.email_service import (
     send_student_invitation_email,
     send_password_reset_email,
 )
-from app.utils.security import create_invitation_token, create_reset_token, hash_password
+from app.utils.security import create_invitation_token, create_reset_token, hash_password, hash_token, verify_token_hash
 from app.config import get_settings
 
 settings = get_settings()
@@ -829,7 +829,7 @@ async def reset_student_password(
         raise HTTPException(404, "User record not found")
 
     raw_token = create_reset_token(user.email)
-    user.password_reset_token = hash_password(raw_token)
+    user.password_reset_token = hash_password, hash_token, verify_token_hash(raw_token)
     user.password_reset_expiry = datetime.utcnow() + timedelta(minutes=30)
     await db.commit()
 

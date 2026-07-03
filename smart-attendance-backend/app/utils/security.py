@@ -1,3 +1,4 @@
+import hashlib
 import random
 import string
 import uuid
@@ -108,3 +109,12 @@ def generate_secure_password(length: int = 12) -> str:
 
     secrets.SystemRandom().shuffle(password)
     return ''.join(password)
+
+
+def hash_token(token: str) -> str:
+    """Hash a long token (like JWT) bypassing bcrypt 72-byte limit."""
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+def verify_token_hash(token: str, hashed: str) -> bool:
+    """Verify a SHA-256 hashed token."""
+    return hash_token(token) == hashed
