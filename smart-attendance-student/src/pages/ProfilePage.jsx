@@ -20,7 +20,7 @@ export default function ProfilePage() {
   const addToast = useToast();
   
   const [activeTab, setActiveTab] = useState('info');
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(/** @type {any} */ ({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function ProfilePage() {
       const data = await studentAPI.getProfile();
       setProfile(data);
     } catch (err) {
-      addToast(err.message || 'Failed to load profile', 'error');
+      addToast((err instanceof Error ? err.message : 'Failed to load profile') || 'Failed to load profile', 'error');
     } finally {
       setLoading(false);
     }
