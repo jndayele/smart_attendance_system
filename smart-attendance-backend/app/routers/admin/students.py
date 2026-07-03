@@ -829,7 +829,7 @@ async def reset_student_password(
         raise HTTPException(404, "User record not found")
 
     raw_token = create_reset_token(user.email)
-    user.password_reset_token = hash_password, hash_token, verify_token_hash(raw_token)
+    user.password_reset_token = hash_token(raw_token)
     user.password_reset_expiry = datetime.utcnow() + timedelta(minutes=30)
     await db.commit()
 

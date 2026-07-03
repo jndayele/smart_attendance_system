@@ -107,7 +107,7 @@ class AuthService:
             raw_token = create_reset_token(user.email)
 
             # FIX: store hashed token, match approach in admin/lecturers.py and admin/students.py
-            user.password_reset_token = hash_password, hash_token, verify_token_hash(raw_token)
+            user.password_reset_token = hash_token(raw_token)
             user.password_reset_expiry = datetime.utcnow() + timedelta(
                 minutes=settings.RESET_TOKEN_EXPIRE_MINUTES
             )
@@ -167,7 +167,7 @@ class AuthService:
         if not verify_token_hash(token, user.password_reset_token):
             raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-        user.password_hash = hash_password, hash_token, verify_token_hash(new_password)
+        user.password_hash = hash_password(new_password)
         user.failed_attempts = 0
         user.locked_until = None
         user.password_reset_token = None
@@ -185,7 +185,7 @@ class AuthService:
         result = await db.execute(select(User).filter(User.id == lecturer.user_id))
         user = result.scalars().first()
 
-        user.password_hash = hash_password, hash_token, verify_token_hash(password)
+        user.password_hash = hash_password(password)
         user.is_verified = True
         user.is_active = True
         lecturer.activation_token = None
@@ -257,7 +257,7 @@ class AuthService:
         result = await db.execute(select(User).filter(User.id == student.user_id))
         user = result.scalars().first()
 
-        user.password_hash = hash_password, hash_token, verify_token_hash(password)
+        user.password_hash = hash_password(password)
         user.is_verified = True
         user.is_active = True
 
