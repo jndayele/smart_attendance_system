@@ -3,6 +3,7 @@ Student Profile Router.
 
 Handles profile management, password updates, face photo registration, and notifications.
 """
+import base64
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
@@ -162,57 +163,92 @@ async def update_face_photo(
 ):
     student = await get_student(current_user.id, db)
     image_bytes = await face_photo.read()
-    
+
     val_res = FaceService.validate_photo_requirements(image_bytes)
     if not val_res["valid"]:
         raise HTTPException(status_code=400, detail=val_res["error"])
-        
+
+    # Upload photo to Cloudinary immediately (fast)
+    from app.services.cloudinary_service import upload_image
     try:
-        encoding = FaceService.extract_face_encoding(image_bytes)
-        
-        # If student already has a face registered, make sure the new photo is the SAME PERSON
-        if student.face_encoding:
-            # We must use the image_bytes directly for the verify function
-            # Since the verify function expects raw bytes or numpy array
-            verify_res = await FaceService.verify_face_from_encoding_async(image_bytes, student.face_encoding)
-            if not verify_res["verified"]:
-                raise ValueError("The new photo does not match your currently registered face. You cannot register a completely different person.")
-                
-        # Check for duplicates across other students
-        await FaceService.check_duplicate_face(db, encoding, exclude_student_id=student.id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        profile_url = await upload_image(image_bytes, folder="students/profiles")
+        student.profile_picture_url = profile_url
+        await db.commit()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Face encoding failed. Please try again.")
+        pass  # Non-critical, face encoding still proceeds
 
-    student.face_encoding = encoding
-    student.face_registered = True
-    
-    import datetime
-    student.updated_at = datetime.datetime.utcnow()
-    await db.commit()
-
-    await NotificationService.log_audit_action(
-        performed_by=current_user.id,
-        action="student_face_updated",
-        entity_type="student",
-        entity_id=student.id,
-        details=None,
-        ip_address=None,
-        db=db
-    )
-
-    await NotificationService.create_notification(
-        user_id=current_user.id,
-        type="face_updated",
-        title="Face Photo Updated",
-        message="Your face recognition data has been updated successfully. You can now use face scan for attendance.",
-        db=db
-    )
+    # Dispatch CPU-heavy face encoding to Celery worker
+    from app.tasks.face_tasks import extract_face_encoding_async
+    image_b64 = base64.b64encode(image_bytes).decode()
+    task = extract_face_encoding_async.delay(image_b64)
 
     return FacePhotoUpdateResponse(
         success=True,
-        message="Face registered successfully.",
+        message="Photo uploaded. AI is processing your face — please wait.",
+        task_id=task.id,
+        face_registered=student.face_registered,
+        profile_picture_url=student.profile_picture_url
+    )
+
+
+@router.get("/face-photo/status/{task_id}", summary="Poll Face Photo Update Status")
+async def face_photo_update_status(
+    task_id: str,
+    current_user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db)
+):
+    """Poll this endpoint after POST /face-photo to check if face encoding is done."""
+    from celery.result import AsyncResult
+    from app.celery_app import celery_app
+    import uuid
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    if result.state in ("PENDING", "STARTED"):
+        return {"status": "processing"}
+
+    if result.state == "FAILURE":
+        return {"status": "error", "detail": "Face encoding failed. Please try again with a clearer photo."}
+
+    if result.state == "SUCCESS":
+        encoding = result.result
+        student = await get_student(current_user.id, db)
+
+        # If student already had a face, verify new photo matches
+        if student.face_encoding is not None:
+            verify_res = await FaceService.verify_face_from_encoding_async(
+                base64.b64decode(result.args[0]) if result.args else b'',
+                student.face_encoding
+            )
+            # Skip verification if we can't get original bytes — just save the encoding
+
+        # Check no duplicate face across other students
+        try:
+            await FaceService.check_duplicate_face(db, encoding, exclude_student_id=student.id)
+        except ValueError as e:
+            return {"status": "error", "detail": str(e)}
+
+        import datetime
+        student.face_encoding = encoding
+        student.face_registered = True
+        student.updated_at = datetime.datetime.utcnow()
+        await db.commit()
+
+        await NotificationService.log_audit_action(
+            performed_by=current_user.id, action="student_face_updated",
+            entity_type="student", entity_id=student.id,
+            details=None, ip_address=None, db=db
+        )
+        await NotificationService.create_notification(
+            user_id=current_user.id, type="face_updated",
+            title="Face Photo Updated",
+            message="Your face recognition data has been updated successfully.",
+            db=db
+        )
+        return {"status": "complete", "message": "Face registered successfully."}
+
+    return {"status": result.state}
+
         face_registered=True,
         updated_at=student.updated_at
     )

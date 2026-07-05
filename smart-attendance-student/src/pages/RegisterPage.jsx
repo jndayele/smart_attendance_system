@@ -146,18 +146,45 @@ export default function RegisterPage() {
       formData.append('password', password);
       formData.append('face_photo', photoFile);
 
-      const res = await authAPI.registerStudent(formData);
-      
-      await loginSuccess(res);
-      
-      setPhotoStatus('success');
-      setTimeout(() => setStep(3), 800);
+      // Step 1: Submit — returns task_id + student_id immediately
+      const { task_id, student_id } = await authAPI.registerStudent(formData);
+
+      // Step 2: Poll until Celery worker finishes face encoding
+      let attempts = 0;
+      const maxAttempts = 40; // 40 × 3s = 2 minutes max
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const statusRes = await authAPI.pollRegisterStudent(task_id, student_id);
+          if (statusRes.status === 'complete') {
+            clearInterval(poll);
+            await loginSuccess({ access_token: statusRes.access_token });
+            setPhotoStatus('success');
+            setPhotoProcessing(false);
+            setTimeout(() => setStep(3), 800);
+          } else if (statusRes.status === 'error') {
+            clearInterval(poll);
+            setPhotoError(statusRes.detail || 'Face encoding failed. Please try again.');
+            setPhotoProcessing(false);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setPhotoError('Face processing is taking too long. Please try again.');
+            setPhotoProcessing(false);
+          }
+          // else still 'processing' — keep polling
+        } catch (pollErr) {
+          clearInterval(poll);
+          setPhotoError(pollErr.message || 'Something went wrong during face verification.');
+          setPhotoProcessing(false);
+        }
+      }, 3000);
+
     } catch (err) {
-      setPhotoError(err.message || "Failed to register face and create account.");
-    } finally {
+      setPhotoError(err.message || 'Failed to submit registration. Please try again.');
       setPhotoProcessing(false);
     }
   };
+
 
   useEffect(() => {
     if (step !== 3) return;
@@ -403,9 +430,10 @@ export default function RegisterPage() {
                 <div className="text-center py-4">
                   <Loader2 size={24} className="mx-auto animate-spin mb-2" style={{ color: 'var(--accent-primary)' }} />
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Analysing your photo...</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Detecting face and extracting encoding. This may take a moment.</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Our AI is processing your face. This can take up to 60 seconds — please don't close this page.</p>
                 </div>
               )}
+
 
               {photoError && (
                 <div className="flex items-start gap-2 p-3 rounded-lg mt-4"

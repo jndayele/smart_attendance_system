@@ -62,10 +62,16 @@ export const authAPI = {
     return request(`/auth/validate-student-invitation?token=${token}`, { method: 'GET' }, false);
   },
   registerStudent(formData) {
-    // Note: formData should contain token, password, and face_photo
+    // Step 1: Submit form, get back task_id + student_id
     return request('/auth/register-student', {
       method: 'POST',
       body: formData,
+    }, false);
+  },
+  pollRegisterStudent(taskId, studentId) {
+    // Step 2: Poll until face encoding is complete
+    return request(`/auth/register-student/status/${taskId}?student_id=${studentId}`, {
+      method: 'GET',
     }, false);
   },
   login(email, password) {

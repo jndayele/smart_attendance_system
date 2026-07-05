@@ -246,17 +246,123 @@ async def validate_student_invitation(token: str, db: AsyncSession = Depends(get
     data = await AuthService.validate_student_invitation(db, token)
     return data
 
-@router.post("/register-student", response_model=TokenResponse)
+@router.post("/register-student")
 async def register_student(
     token: str = Form(...),
     password: str = Form(...),
     face_photo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Register student account and encode face."""
+    """
+    Step 1 of student registration.
+    Validates the token, saves password, dispatches face encoding to Celery,
+    and returns a task_id immediately (no timeout).
+    The frontend polls /register-student/status/{task_id} to get the result.
+    """
+    import base64 as _b64
+    from app.tasks.face_tasks import extract_face_encoding_async
+    from app.services.cloudinary_service import upload_image
+
     image_bytes = await face_photo.read()
-    access_token = await AuthService.register_student(db, token, password, image_bytes)
-    return TokenResponse(access_token=access_token)
+
+    # 1. Validate invitation token
+    result = await db.execute(select(Student).filter(Student.invitation_token == token))
+    student = result.scalars().first()
+    if not student or not student.invitation_token_expiry or student.invitation_token_expiry < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation token")
+
+    # 2. Quick photo sanity check (no DeepFace yet)
+    from app.services.face_service import FaceService
+    validation = FaceService.validate_photo_requirements(image_bytes)
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail=validation["error"])
+
+    # 3. Save password immediately so the student can log in once face is done
+    user_res = await db.execute(select(User).filter(User.id == student.user_id))
+    user = user_res.scalars().first()
+    user.password_hash = hash_password(password)
+    # Keep is_verified=False until face is confirmed — poll endpoint will flip it
+
+    # 4. Upload photo to Cloudinary (fast, ~1-2s)
+    try:
+        profile_url = await upload_image(image_bytes, folder="students/profiles")
+        student.profile_picture_url = profile_url
+    except Exception as e:
+        logger.warning(f"Cloudinary upload failed: {e}")
+
+    # 5. Store student_id for lookup in the polling endpoint
+    pending_student_id = str(student.id)
+    await db.commit()
+
+    # 6. Dispatch the CPU-heavy face encoding to Celery worker
+    image_b64 = _b64.b64encode(image_bytes).decode()
+    task = extract_face_encoding_async.delay(image_b64)
+
+    return {"task_id": task.id, "student_id": pending_student_id}
+
+
+@router.get("/register-student/status/{task_id}")
+async def register_student_status(
+    task_id: str,
+    student_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 2 of student registration.
+    Frontend polls this endpoint after submitting the form.
+    When the Celery face-encoding task completes, saves the encoding and returns the JWT.
+    """
+    from celery.result import AsyncResult
+    from app.celery_app import celery_app
+    from app.services.face_service import FaceService
+    import uuid
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    if result.state == "PENDING" or result.state == "STARTED":
+        return {"status": "processing"}
+
+    if result.state == "FAILURE":
+        return {"status": "error", "detail": str(result.result)}
+
+    if result.state == "SUCCESS":
+        encoding = result.result
+
+        # Load student and user
+        stu_res = await db.execute(select(Student).filter(Student.id == uuid.UUID(student_id)))
+        student = stu_res.scalars().first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        # Check for duplicate face registrations
+        try:
+            await FaceService.check_duplicate_face(db, encoding, exclude_student_id=student.id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Save the face encoding and activate the account
+        student.face_encoding = encoding
+        student.face_registered = True
+        student.invitation_token = None
+        student.invitation_token_expiry = None
+
+        user_res = await db.execute(select(User).filter(User.id == student.user_id))
+        user = user_res.scalars().first()
+        user.is_verified = True
+        user.is_active = True
+
+        await db.commit()
+
+        # Send confirmation email in background
+        from app.services.email_service import send_registration_confirmation_email
+        import asyncio
+        asyncio.create_task(send_registration_confirmation_email(user.email, student.name, student.student_id))
+
+        access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+        return {"status": "complete", "access_token": access_token}
+
+    return {"status": result.state}
+
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(current_user: User = Depends(get_current_user)):
