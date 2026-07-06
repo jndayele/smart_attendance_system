@@ -249,10 +249,6 @@ async def face_photo_update_status(
 
     return {"status": result.state}
 
-        face_registered=True,
-        updated_at=student.updated_at
-    )
-
 
 @router.get("/notifications", response_model=NotificationListResponse, summary="Get Notifications")
 async def get_notifications(

@@ -235,7 +235,9 @@ class FacePhotoUpdateResponse(BaseModel):
     success: bool
     message: str
     face_registered: bool
-    updated_at: datetime
+    task_id: Optional[str] = None
+    profile_picture_url: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 # FIX: added missing alert_below_70 field that was in defaults dict but not the schema
