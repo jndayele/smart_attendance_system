@@ -70,9 +70,22 @@ export default function StudentsPage() {
   const [overrideForm, setOverrideForm] = useState({ course: '', session: '', status: 'present', reason: '' });
   const [errors, setErrors] = useState({});
 
-  // Derive levels for the currently selected programme in the add form
+  // ── Cascading form derived data ──────────────────────────────────────────────
+  // Programmes filtered by the currently selected department in the add form
+  const formProgrammes = form.dept
+    ? programmes.filter(p => p.department_id === form.dept)
+    : programmes;
+
+  // Levels for the currently selected programme
   const selectedProgramme = programmes.find(p => p.id === form.programme);
-  const formLevels = selectedProgramme ? (selectedProgramme.levels || backendLevels) : backendLevels;
+  const formLevels = selectedProgramme
+    ? (selectedProgramme.levels || backendLevels)
+    : backendLevels;
+
+  // Semesters: each year of study has 2 semesters, so max semester = duration_years * 2.
+  // But "semester of entry" is typically just 1 or 2 (which semester in year 1 the student joined).
+  // We keep it as Sem 1 / Sem 2 always — this is correct academically.
+  const formSemesters = [1, 2];
 
   // ----- Dynamic Queries (Details & Sessions) -----
   const { data: studentDetailsRes, isLoading: detailsLoading } = useQuery({
@@ -149,13 +162,18 @@ export default function StudentsPage() {
   // ----- Handlers -----
   const openAdd = () => { 
     setSlideType('add');
-    const firstProg = programmes[0];
+    const firstDept = departments[0];
+    const deptProgs = firstDept
+      ? programmes.filter(p => p.department_id === firstDept.id)
+      : programmes;
+    const firstProg = deptProgs[0];
     const firstLevel = firstProg?.levels?.[0]?.toString() || backendLevels[0]?.toString() || '100';
     setForm({ 
       name: '', sid: '', email: '', 
-      dept: departments[0]?.id || '', 
+      dept: firstDept?.id || '', 
       programme: firstProg?.id || '', 
-      level: firstLevel, semEntry: '1' 
+      level: firstLevel, 
+      semEntry: '1' 
     }); 
     setErrors({}); 
     setSlideOpen(true); 
@@ -378,7 +396,15 @@ export default function StudentsPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Department *</label>
-              <select value={form.dept} onChange={e => setForm(p => ({ ...p, dept: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: errors.dept ? '1px solid var(--accent-red)' : '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
+              <select value={form.dept} onChange={e => {
+                const deptId = e.target.value;
+                // Reset programme/level when dept changes
+                const deptProgs = programmes.filter(p => p.department_id === deptId);
+                const firstProg = deptProgs[0];
+                const firstLevel = firstProg?.levels?.[0]?.toString() || backendLevels[0]?.toString() || '100';
+                setForm(p => ({ ...p, dept: deptId, programme: firstProg?.id || '', level: firstLevel, semEntry: '1' }));
+                setErrors(p => ({ ...p, dept: '', programme: '' }));
+              }} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: errors.dept ? '1px solid var(--accent-red)' : '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
                 <option value="">Select...</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
@@ -389,10 +415,14 @@ export default function StudentsPage() {
                 const pId = e.target.value;
                 const prog = programmes.find(p => p.id === pId);
                 const firstLevel = prog?.levels?.[0]?.toString() || backendLevels[0]?.toString() || '100';
-                setForm(p => ({ ...p, programme: pId, level: firstLevel }));
+                setForm(p => ({ ...p, programme: pId, level: firstLevel, semEntry: '1' }));
+                setErrors(p => ({ ...p, programme: '' }));
               }} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: errors.programme ? '1px solid var(--accent-red)' : '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
                 <option value="">Select...</option>
-                {programmes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                {formProgrammes.length > 0
+                  ? formProgrammes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)
+                  : <option disabled value="">No programmes in this department</option>
+                }
               </select>
             </div>
           </div>
@@ -406,7 +436,9 @@ export default function StudentsPage() {
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Semester of Entry</label>
               <select value={form.semEntry} onChange={e => setForm(p => ({ ...p, semEntry: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-lg text-sm appearance-none" style={{ backgroundColor: 'var(--bg-deep)', border: '1px solid var(--border-input)', color: 'var(--text-primary)' }}>
-                <option value="1">Semester 1</option><option value="2">Semester 2</option>
+                {formSemesters.map(s => (
+                  <option key={s} value={s}>Semester {s}</option>
+                ))}
               </select>
             </div>
           </div>
