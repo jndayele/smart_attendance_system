@@ -260,12 +260,29 @@ async def create_student(
         raise HTTPException(status_code=400, detail="Programme not found")
         
     email_check = await db.execute(select(User).filter(func.lower(User.email) == data.email.lower()))
-    if email_check.scalars().first():
-        raise HTTPException(status_code=409, detail="Email exists")
+    existing_user = email_check.scalars().first()
+    
+    if existing_user:
+        # Check if this user is orphaned (no student record attached)
+        stu_check = await db.execute(select(Student).filter(Student.user_id == existing_user.id))
+        existing_student = stu_check.scalars().first()
         
+        if existing_student:
+            if existing_student.is_suspended:
+                raise HTTPException(status_code=409, detail="This email belongs to a suspended/deleted student. Please reactivate them from the students list instead.")
+            raise HTTPException(status_code=409, detail="Email already exists.")
+        else:
+            # Orphaned user! (Admin deleted student from DB but left the user)
+            # Safe to delete and recreate.
+            await db.delete(existing_user)
+            await db.flush()
+            
     stu_check = await db.execute(select(Student).filter(func.lower(Student.student_id) == data.student_id.lower()))
-    if stu_check.scalars().first():
-        raise HTTPException(status_code=409, detail="Student ID exists")
+    existing_student_by_id = stu_check.scalars().first()
+    if existing_student_by_id:
+        if existing_student_by_id.is_suspended:
+            raise HTTPException(status_code=409, detail="This Student ID belongs to a suspended/deleted student. Please reactivate them instead.")
+        raise HTTPException(status_code=409, detail="Student ID already exists.")
         
     new_user = User(
         email=data.email.lower(),
