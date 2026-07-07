@@ -189,7 +189,7 @@ async def get_dashboard(
     
     res_sem = await db.execute(select(Semester).filter(Semester.is_active == True))
     sem = res_sem.scalars().first()
-    sem_name = f"Semester {sem.number}" if sem else None
+    sem_name = sem.name if sem else None
 
     stats = StudentDashboardStats(
         total_courses=len(course_cards),
