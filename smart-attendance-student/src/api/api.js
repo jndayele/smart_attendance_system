@@ -14,6 +14,7 @@ export function clearToken() {
 
 async function request(endpoint, options = {}, requireAuth = true) {
   const headers = {
+    'ngrok-skip-browser-warning': '69420',
     ...options.headers,
   };
 
