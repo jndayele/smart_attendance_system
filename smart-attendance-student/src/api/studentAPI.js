@@ -5,6 +5,7 @@ const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api
 async function request(endpoint, options = {}) {
   const token = getToken();
   const headers = {
+    'ngrok-skip-browser-warning': '69420',
     ...options.headers,
   };
 
