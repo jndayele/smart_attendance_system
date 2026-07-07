@@ -338,32 +338,78 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 
 @router.get("/dashboard/charts")
 async def get_dashboard_charts(db: AsyncSession = Depends(get_db)):
+    from app.models.academic_year import Semester
+    import math
+    
     weeks = []
-    for i in range(7, -1, -1):
-        week_start = datetime.utcnow() - timedelta(weeks=i+1)
-        week_end = datetime.utcnow() - timedelta(weeks=i)
+    now = datetime.utcnow()
+    
+    res_sem = await db.execute(select(Semester).filter(Semester.is_active == True))
+    active_sem = res_sem.scalars().first()
+    
+    if active_sem and active_sem.start_date:
+        start_date_dt = datetime.combine(active_sem.start_date, datetime.min.time())
+        days_since_start = (now - start_date_dt).days
         
-        total = await db.scalar(
-            select(func.count(AttendanceRecord.id))
-            .join(Session).where(Session.session_date.between(week_start, week_end))
-        )
-        present = await db.scalar(
-            select(func.count(AttendanceRecord.id))
-            .join(Session).where(
-                Session.session_date.between(week_start, week_end),
-                AttendanceRecord.status == "present"
+        current_week_num = math.floor(days_since_start / 7) + 1
+        if current_week_num < 1: 
+            current_week_num = 1
+            
+        start_week = max(1, current_week_num - 7)
+        
+        for w in range(start_week, current_week_num + 1):
+            week_start = start_date_dt + timedelta(days=(w - 1) * 7)
+            week_end = start_date_dt + timedelta(days=w * 7)
+            
+            total = await db.scalar(
+                select(func.count(AttendanceRecord.id))
+                .join(Session).where(Session.session_date >= week_start, Session.session_date < week_end)
             )
-        )
-        sessions_count = await db.scalar(
-            select(func.count(func.distinct(Session.id)))
-            .where(Session.session_date.between(week_start, week_end))
-        )
-        pct = round((present / total * 100) if total else 0, 1)
-        weeks.append({
-            "week": f"Week {8-i}", 
-            "attendance_pct": pct,
-            "sessions_count": sessions_count or 0
-        })
+            present = await db.scalar(
+                select(func.count(AttendanceRecord.id))
+                .join(Session).where(
+                    Session.session_date >= week_start,
+                    Session.session_date < week_end,
+                    AttendanceRecord.status == "present"
+                )
+            )
+            sessions_count = await db.scalar(
+                select(func.count(func.distinct(Session.id)))
+                .where(Session.session_date >= week_start, Session.session_date < week_end)
+            )
+            pct = round((present / total * 100) if total else 0, 1)
+            weeks.append({
+                "week": f"Week {w}", 
+                "attendance_pct": pct,
+                "sessions_count": sessions_count or 0
+            })
+    else:
+        # Fallback to rolling 8 weeks if no semester start date
+        for i in range(7, -1, -1):
+            week_start = now - timedelta(weeks=i+1)
+            week_end = now - timedelta(weeks=i)
+            
+            total = await db.scalar(
+                select(func.count(AttendanceRecord.id))
+                .join(Session).where(Session.session_date.between(week_start, week_end))
+            )
+            present = await db.scalar(
+                select(func.count(AttendanceRecord.id))
+                .join(Session).where(
+                    Session.session_date.between(week_start, week_end),
+                    AttendanceRecord.status == "present"
+                )
+            )
+            sessions_count = await db.scalar(
+                select(func.count(func.distinct(Session.id)))
+                .where(Session.session_date.between(week_start, week_end))
+            )
+            pct = round((present / total * 100) if total else 0, 1)
+            weeks.append({
+                "week": f"Week {8-i}", 
+                "attendance_pct": pct,
+                "sessions_count": sessions_count or 0
+            })
         
     from app.models.department import Department
     from app.models.programme import Programme

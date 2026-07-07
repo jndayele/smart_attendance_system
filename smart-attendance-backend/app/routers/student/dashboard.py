@@ -288,55 +288,104 @@ async def get_attendance_trend(
     if not courses:
         return {"courses": []}
     
-    # Get all past sessions and attendance for these courses over the last 4 weeks
     from datetime import timedelta
-    now = datetime.utcnow()
-    four_weeks_ago = now - timedelta(days=28)
-    
-    res_sess = await db.execute(
-        select(Session, AttendanceRecord)
-        .outerjoin(AttendanceRecord, (AttendanceRecord.session_id == Session.id) & (AttendanceRecord.student_id == student.id))
-        .filter(Session.course_id.in_([c.id for c in courses]), Session.session_date >= four_weeks_ago.date(), Session.is_locked == True)
-    )
-    rows = res_sess.all()
-    
-    # Group by course -> week -> [sessions]
     import math
-    course_data = {c.id: {} for c in courses}
+    now = datetime.utcnow()
     
-    for s, ar in rows:
-        # Calculate week index 0-3
-        days_ago = (now.date() - s.session_date).days
-        week_idx = 3 - math.floor(days_ago / 7)
-        if week_idx < 0: week_idx = 0
-        if week_idx > 3: week_idx = 3
-        
-        if week_idx not in course_data[s.course_id]:
-            course_data[s.course_id][week_idx] = {'total': 0, 'present': 0}
+    res_sem = await db.execute(select(Semester).filter(Semester.is_active == True))
+    active_sem = res_sem.scalars().first()
+    
+    if active_sem and active_sem.start_date:
+        start_date_dt = active_sem.start_date
+        days_since_start = (now.date() - start_date_dt).days
+        current_week_num = math.floor(days_since_start / 7) + 1
+        if current_week_num < 1:
+            current_week_num = 1
             
-        course_data[s.course_id][week_idx]['total'] += 1
-        if ar and ar.status == "present":
-            course_data[s.course_id][week_idx]['present'] += 1
-
-    # Format response
-    trend_courses = []
-    for c in courses:
-        trend_points = []
-        for w in range(4):
-            data = course_data[c.id].get(w, None)
-            pct = 0.0
-            if data and data['total'] > 0:
-                pct = (data['present'] / data['total']) * 100
+        start_week = max(1, current_week_num - 3)  # last 4 weeks ending at current_week
+        
+        cutoff_date = start_date_dt + timedelta(days=(start_week - 1) * 7)
+        
+        res_sess = await db.execute(
+            select(Session, AttendanceRecord)
+            .outerjoin(AttendanceRecord, (AttendanceRecord.session_id == Session.id) & (AttendanceRecord.student_id == student.id))
+            .filter(Session.course_id.in_([c.id for c in courses]), Session.session_date >= cutoff_date, Session.is_locked == True)
+        )
+        rows = res_sess.all()
+        
+        course_data = {c.id: {w: {'total': 0, 'present': 0} for w in range(start_week, current_week_num + 1)} for c in courses}
+        
+        for s, ar in rows:
+            days_from_start = (s.session_date - start_date_dt).days
+            w_idx = math.floor(days_from_start / 7) + 1
+            if w_idx < start_week or w_idx > current_week_num:
+                continue
+            course_data[s.course_id][w_idx]['total'] += 1
+            if ar and ar.status == "present":
+                course_data[s.course_id][w_idx]['present'] += 1
                 
-            trend_points.append(CourseTrendPoint(
-                week_label=f"Week {w + 1}",
-                attendance_pct=round(pct, 1)
+        trend_courses = []
+        for c in courses:
+            trend_points = []
+            for w in range(start_week, current_week_num + 1):
+                data = course_data[c.id][w]
+                pct = 0.0
+                if data['total'] > 0:
+                    pct = (data['present'] / data['total']) * 100
+                trend_points.append(CourseTrendPoint(
+                    week_label=f"Week {w}",
+                    attendance_pct=round(pct, 1)
+                ))
+            trend_courses.append(CourseAttendanceTrend(
+                course_code=c.code,
+                course_title=c.title,
+                trend=trend_points
+            ))
+        return {"courses": trend_courses}
+    else:
+        # Fallback to rolling 4 weeks
+        four_weeks_ago = now - timedelta(days=28)
+        
+        res_sess = await db.execute(
+            select(Session, AttendanceRecord)
+            .outerjoin(AttendanceRecord, (AttendanceRecord.session_id == Session.id) & (AttendanceRecord.student_id == student.id))
+            .filter(Session.course_id.in_([c.id for c in courses]), Session.session_date >= four_weeks_ago.date(), Session.is_locked == True)
+        )
+        rows = res_sess.all()
+        
+        course_data = {c.id: {} for c in courses}
+        
+        for s, ar in rows:
+            days_ago = (now.date() - s.session_date).days
+            week_idx = 3 - math.floor(days_ago / 7)
+            if week_idx < 0: week_idx = 0
+            if week_idx > 3: week_idx = 3
+            
+            if week_idx not in course_data[s.course_id]:
+                course_data[s.course_id][week_idx] = {'total': 0, 'present': 0}
+                
+            course_data[s.course_id][week_idx]['total'] += 1
+            if ar and ar.status == "present":
+                course_data[s.course_id][week_idx]['present'] += 1
+
+        trend_courses = []
+        for c in courses:
+            trend_points = []
+            for w in range(4):
+                data = course_data[c.id].get(w, None)
+                pct = 0.0
+                if data and data['total'] > 0:
+                    pct = (data['present'] / data['total']) * 100
+                    
+                trend_points.append(CourseTrendPoint(
+                    week_label=f"Week {w + 1}",
+                    attendance_pct=round(pct, 1)
+                ))
+                
+            trend_courses.append(CourseAttendanceTrend(
+                course_code=c.code,
+                course_title=c.title,
+                trend=trend_points
             ))
             
-        trend_courses.append(CourseAttendanceTrend(
-            course_code=c.code,
-            course_title=c.title,
-            trend=trend_points
-        ))
-        
-    return {"courses": trend_courses}
+        return {"courses": trend_courses}
